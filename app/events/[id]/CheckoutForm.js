@@ -28,14 +28,18 @@ export default function CheckoutForm({ event }) {
       return;
     }
 
-    // Create the order
-    const { error: orderError } = await supabase.from('orders').insert({
-      event_id: event.id,
-      buyer_name: form.name,
-      buyer_email: form.email,
-      quantity: form.quantity,
-      total_price: parseFloat(total),
-    });
+    // Create the order and get back the ID
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert({
+        event_id: event.id,
+        buyer_name: form.name,
+        buyer_email: form.email,
+        quantity: form.quantity,
+        total_price: parseFloat(total),
+      })
+      .select('id')
+      .single();
 
     if (orderError) {
       setErrorMsg(orderError.message);
@@ -54,6 +58,13 @@ export default function CheckoutForm({ event }) {
       setStatus('error');
       return;
     }
+
+    // Create tickets and send PDF ticket email
+    await fetch('/api/send-ticket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: order.id }),
+    });
 
     setStatus('success');
   }
