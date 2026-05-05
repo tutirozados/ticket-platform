@@ -18,6 +18,7 @@ export default function LoginPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setStatus('loading');
+    console.log('SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
     setErrorMsg('');
 
     if (mode === 'login') {
