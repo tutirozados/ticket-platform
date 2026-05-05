@@ -25,6 +25,26 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Hide default html5-qrcode UI chrome */
+#qr-reader__header_message,
+#qr-reader__status_span,
+#qr-reader select,
+#qr-reader__dashboard_section_csr span,
+#qr-reader__dashboard_section_fsr,
+#qr-reader__filescan_input {
+  display: none !important;
+}
+#qr-reader {
+  border: none !important;
+  padding: 0 !important;
+}
+#qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 0 !important;
+}
+
 @layer components {
   .input {
     @apply w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10;
