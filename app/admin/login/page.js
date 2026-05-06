@@ -6,8 +6,8 @@ import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'forgot'
+  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '' });
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -15,10 +15,23 @@ export default function LoginPage() {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
+  function switchMode(newMode) {
+    setMode(newMode);
+    setErrorMsg('');
+    setStatus(null);
+    setForm({ email: '', password: '', confirmPassword: '' });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setStatus('loading');
     setErrorMsg('');
+
+    if (mode === 'signup' && form.password !== form.confirmPassword) {
+      setErrorMsg('Passwords do not match.');
+      setStatus('error');
+      return;
+    }
 
     if (mode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({
@@ -32,7 +45,8 @@ export default function LoginPage() {
         router.push('/admin');
         router.refresh();
       }
-    } else {
+
+    } else if (mode === 'signup') {
       const { error } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
@@ -46,22 +60,39 @@ export default function LoginPage() {
       } else {
         setStatus('check-email');
       }
+
+    } else if (mode === 'forgot') {
+      const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/admin`,
+      });
+      if (error) {
+        setErrorMsg(error.message);
+        setStatus('error');
+      } else {
+        setStatus('reset-sent');
+      }
     }
   }
 
   if (status === 'check-email') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 w-full max-w-sm text-center">
-          <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Check your email</h2>
-          <p className="text-sm text-gray-500">We sent a confirmation link to <strong>{form.email}</strong>. Click it to activate your account.</p>
-        </div>
-      </div>
+      <ConfirmScreen
+        icon="email"
+        title="Check your email"
+        message={<>We sent a confirmation link to <strong>{form.email}</strong>. Click it to activate your account.</>}
+        onBack={() => switchMode('login')}
+      />
+    );
+  }
+
+  if (status === 'reset-sent') {
+    return (
+      <ConfirmScreen
+        icon="email"
+        title="Reset link sent"
+        message={<>We sent a password reset link to <strong>{form.email}</strong>. Check your inbox.</>}
+        onBack={() => switchMode('login')}
+      />
     );
   }
 
@@ -69,9 +100,11 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">TicketFlow</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">FOMO</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {mode === 'login' ? 'Sign in to your account' : 'Create an organizer account'}
+            {mode === 'login' && 'Sign in to your account'}
+            {mode === 'signup' && 'Create an organizer account'}
+            {mode === 'forgot' && 'Reset your password'}
           </p>
         </div>
 
@@ -96,49 +129,96 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-gray-700">Password</label>
-              <input
-                type="password"
-                name="password"
-                value={form.password}
-                onChange={handleChange}
-                placeholder="••••••••"
-                required
-                minLength={6}
-                className="input"
-              />
-            </div>
+            {mode !== 'forgot' && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700">Password</label>
+                  {mode === 'login' && (
+                    <button
+                      type="button"
+                      onClick={() => switchMode('forgot')}
+                      className="text-xs text-gray-500 hover:text-gray-900 transition-colors"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="password"
+                  name="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                  className="input"
+                />
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">Confirm Password</label>
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  value={form.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                  className={`input ${form.confirmPassword && form.confirmPassword !== form.password ? 'border-red-400 focus:border-red-500 focus:ring-red-500/10' : ''}`}
+                />
+                {form.confirmPassword && form.confirmPassword !== form.password && (
+                  <p className="text-xs text-red-500">Passwords do not match.</p>
+                )}
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={status === 'loading'}
               className="w-full bg-gray-900 hover:bg-gray-700 disabled:bg-gray-400 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors mt-2"
             >
-              {status === 'loading'
-                ? '…'
-                : mode === 'login'
-                ? 'Sign In'
-                : 'Create Account'}
+              {status === 'loading' ? '…' : mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
             </button>
           </form>
 
-          <p className="text-center text-sm text-gray-500 mt-6">
-            {mode === 'login' ? (
-              <>Don't have an account?{' '}
-                <button onClick={() => { setMode('signup'); setErrorMsg(''); setStatus(null); }} className="text-gray-900 font-medium hover:underline">
-                  Sign up
-                </button>
-              </>
-            ) : (
-              <>Already have an account?{' '}
-                <button onClick={() => { setMode('login'); setErrorMsg(''); setStatus(null); }} className="text-gray-900 font-medium hover:underline">
-                  Sign in
-                </button>
-              </>
+          <div className="text-center text-sm text-gray-500 mt-6 space-y-2">
+            {mode === 'login' && (
+              <p>Don't have an account?{' '}
+                <button onClick={() => switchMode('signup')} className="text-gray-900 font-medium hover:underline">Sign up</button>
+              </p>
             )}
-          </p>
+            {mode === 'signup' && (
+              <p>Already have an account?{' '}
+                <button onClick={() => switchMode('login')} className="text-gray-900 font-medium hover:underline">Sign in</button>
+              </p>
+            )}
+            {mode === 'forgot' && (
+              <p>
+                <button onClick={() => switchMode('login')} className="text-gray-900 font-medium hover:underline">← Back to sign in</button>
+              </p>
+            )}
+          </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmScreen({ title, message, onBack }) {
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 w-full max-w-sm text-center">
+        <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">{title}</h2>
+        <p className="text-sm text-gray-500 mb-6">{message}</p>
+        <button onClick={onBack} className="text-sm text-gray-900 font-medium hover:underline">← Back to sign in</button>
       </div>
     </div>
   );

@@ -105,7 +105,7 @@ function TicketPDF({ event, order, tickets }) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <Text style={styles.brand}>TicketFlow</Text>
+        <Text style={styles.brand}>FOMO</Text>
         <Text style={styles.eventTitle}>{event.title}</Text>
         <Text style={styles.eventMeta}>{formatDate(event.date)} · {formatTime(event.date)}</Text>
         <Text style={styles.eventMeta}>{event.location}</Text>
@@ -116,7 +116,7 @@ function TicketPDF({ event, order, tickets }) {
           <View key={ticket.id} style={styles.ticket}>
             <View style={styles.ticketLeft}>
               <Text style={styles.label}>Attendee</Text>
-              <Text style={styles.value}>{order.buyer_name}</Text>
+              <Text style={styles.value}>{order.first_name && order.last_name ? `${order.first_name} ${order.last_name}` : order.buyer_name}</Text>
 
               <Text style={styles.label}>Ticket</Text>
               <Text style={styles.ticketNumber}>{i + 1} of {order.quantity}</Text>
@@ -130,7 +130,7 @@ function TicketPDF({ event, order, tickets }) {
         ))}
 
         <Text style={styles.footer}>
-          Present this ticket at the entrance · TicketFlow
+          Present this ticket at the entrance · FOMO
         </Text>
       </Page>
     </Document>

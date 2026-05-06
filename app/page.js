@@ -38,7 +38,7 @@ export default async function HomePage() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
           <div>
-            <span className="text-xl font-bold text-gray-900 tracking-tight">TicketFlow</span>
+            <span className="text-xl font-bold text-gray-900 tracking-tight">FOMO</span>
           </div>
           <Link
             href="/admin"

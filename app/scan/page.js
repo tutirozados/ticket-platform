@@ -111,7 +111,7 @@ export default function ScanPage() {
     <div className="min-h-screen bg-gray-900 flex flex-col">
       {/* Header */}
       <header className="flex items-center justify-between px-5 py-4">
-        <Link href="/" className="text-white font-bold text-lg tracking-tight">TicketFlow</Link>
+        <Link href="/" className="text-white font-bold text-lg tracking-tight">FOMO</Link>
         <span className="text-gray-400 text-sm">Scanner</span>
       </header>
 

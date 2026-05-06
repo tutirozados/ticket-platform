@@ -3,14 +3,25 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
+const initialForm = {
+  firstName: '',
+  lastName: '',
+  idNumber: '',
+  email: '',
+  confirmEmail: '',
+  quantity: 1,
+};
+
 export default function CheckoutForm({ event }) {
-  const [form, setForm] = useState({ name: '', email: '', quantity: 1 });
-  const [status, setStatus] = useState(null); // 'loading' | 'success' | 'error'
+  const [form, setForm] = useState(initialForm);
+  const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   const price = parseFloat(event.price);
   const total = (price * form.quantity).toFixed(2);
   const isFree = price === 0;
+
+  const emailMismatch = form.confirmEmail && form.confirmEmail !== form.email;
 
   function handleChange(e) {
     const value = e.target.name === 'quantity' ? parseInt(e.target.value, 10) : e.target.value;
@@ -19,8 +30,13 @@ export default function CheckoutForm({ event }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setStatus('loading');
     setErrorMsg('');
+
+    if (form.email !== form.confirmEmail) {
+      setErrorMsg('Email addresses do not match.');
+      setStatus('error');
+      return;
+    }
 
     if (form.quantity > event.tickets_remaining) {
       setErrorMsg(`Only ${event.tickets_remaining} tickets are available.`);
@@ -28,13 +44,17 @@ export default function CheckoutForm({ event }) {
       return;
     }
 
-    // Create the order and get back the ID
+    setStatus('loading');
+
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
         event_id: event.id,
-        buyer_name: form.name,
+        buyer_name: `${form.firstName} ${form.lastName}`,
         buyer_email: form.email,
+        first_name: form.firstName,
+        last_name: form.lastName,
+        id_number: form.idNumber,
         quantity: form.quantity,
         total_price: parseFloat(total),
       })
@@ -47,7 +67,6 @@ export default function CheckoutForm({ event }) {
       return;
     }
 
-    // Decrement tickets_remaining
     const { error: updateError } = await supabase
       .from('events')
       .update({ tickets_remaining: event.tickets_remaining - form.quantity })
@@ -59,7 +78,6 @@ export default function CheckoutForm({ event }) {
       return;
     }
 
-    // Create tickets and send PDF ticket email
     try {
       const res = await fetch('/api/send-ticket', {
         method: 'POST',
@@ -87,7 +105,7 @@ export default function CheckoutForm({ event }) {
         </div>
         <p className="text-gray-900 font-semibold">You're registered!</p>
         <p className="text-gray-500 text-sm mt-1">
-          A confirmation will be sent to <span className="font-medium">{form.email}</span>.
+          Your ticket is on its way to <span className="font-medium">{form.email}</span>.
         </p>
       </div>
     );
@@ -101,14 +119,41 @@ export default function CheckoutForm({ event }) {
         </div>
       )}
 
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-gray-700">First Name</label>
+          <input
+            type="text"
+            name="firstName"
+            value={form.firstName}
+            onChange={handleChange}
+            placeholder="Jane"
+            required
+            className="input"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-gray-700">Last Name</label>
+          <input
+            type="text"
+            name="lastName"
+            value={form.lastName}
+            onChange={handleChange}
+            placeholder="Smith"
+            required
+            className="input"
+          />
+        </div>
+      </div>
+
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-gray-700">Full Name</label>
+        <label className="text-sm font-medium text-gray-700">ID Number (Cédula)</label>
         <input
           type="text"
-          name="name"
-          value={form.name}
+          name="idNumber"
+          value={form.idNumber}
           onChange={handleChange}
-          placeholder="Jane Smith"
+          placeholder="0000000000"
           required
           className="input"
         />
@@ -128,13 +173,24 @@ export default function CheckoutForm({ event }) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-gray-700">Quantity</label>
-        <select
-          name="quantity"
-          value={form.quantity}
+        <label className="text-sm font-medium text-gray-700">Confirm Email</label>
+        <input
+          type="email"
+          name="confirmEmail"
+          value={form.confirmEmail}
           onChange={handleChange}
-          className="input"
-        >
+          placeholder="jane@example.com"
+          required
+          className={`input ${emailMismatch ? 'border-red-400 focus:border-red-500 focus:ring-red-500/10' : ''}`}
+        />
+        {emailMismatch && (
+          <p className="text-xs text-red-500">Email addresses do not match.</p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-gray-700">Quantity</label>
+        <select name="quantity" value={form.quantity} onChange={handleChange} className="input">
           {Array.from(
             { length: Math.min(10, event.tickets_remaining) },
             (_, i) => i + 1
@@ -144,7 +200,6 @@ export default function CheckoutForm({ event }) {
         </select>
       </div>
 
-      {/* Order summary */}
       <div className="border-t border-gray-100 pt-4 space-y-1.5">
         <div className="flex justify-between text-sm text-gray-500">
           <span>{isFree ? 'Free' : `$${price.toFixed(2)}`} × {form.quantity}</span>
@@ -158,14 +213,10 @@ export default function CheckoutForm({ event }) {
 
       <button
         type="submit"
-        disabled={status === 'loading'}
+        disabled={status === 'loading' || emailMismatch}
         className="w-full bg-gray-900 hover:bg-gray-700 disabled:bg-gray-400 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors"
       >
-        {status === 'loading'
-          ? 'Processing…'
-          : isFree
-          ? 'Register for Free'
-          : `Pay $${total}`}
+        {status === 'loading' ? 'Processing…' : isFree ? 'Register for Free' : `Pay $${total}`}
       </button>
 
       <p className="text-xs text-center text-gray-400">
