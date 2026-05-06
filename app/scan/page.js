@@ -57,7 +57,12 @@ export default function ScanPage() {
     return () => {
       if (runningRef.current && html5QrCode) {
         runningRef.current = false;
-        html5QrCode.stop().catch(() => {});
+        html5QrCode.stop().catch(() => {}).finally(() => {
+          const video = document.querySelector('#qr-reader video');
+          if (video?.srcObject) {
+            video.srcObject.getTracks().forEach((t) => t.stop());
+          }
+        });
       }
     };
   }, [status]);
@@ -69,6 +74,10 @@ export default function ScanPage() {
     if (runningRef.current && scannerRef.current) {
       runningRef.current = false;
       await scannerRef.current.stop().catch(() => {});
+      const video = document.querySelector('#qr-reader video');
+      if (video?.srcObject) {
+        video.srcObject.getTracks().forEach((t) => t.stop());
+      }
     }
 
     setStatus(STATUS.LOADING);

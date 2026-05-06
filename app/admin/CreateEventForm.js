@@ -13,7 +13,7 @@ const initialForm = {
   total_tickets: '',
 };
 
-export default function CreateEventForm({ onCreated, userId }) {
+export default function CreateEventForm({ onCreated, userId, userEmail }) {
   const [form, setForm] = useState(initialForm);
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -38,6 +38,8 @@ export default function CreateEventForm({ onCreated, userId }) {
       total_tickets: parseInt(form.total_tickets, 10),
       tickets_remaining: parseInt(form.total_tickets, 10),
       user_id: userId,
+      organizer_email: userEmail,
+      status: 'pending',
     });
 
     if (error) {
@@ -56,7 +58,7 @@ export default function CreateEventForm({ onCreated, userId }) {
 
       {status === 'success' && (
         <div className="mb-6 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
-          Event created successfully.
+          Event submitted for review. It will go live once approved.
         </div>
       )}
       {status === 'error' && (

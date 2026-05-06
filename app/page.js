@@ -7,6 +7,7 @@ async function getEvents() {
   const { data, error } = await supabase
     .from('events')
     .select('*')
+    .eq('status', 'approved')
     .order('date', { ascending: true });
 
   if (error) return [];

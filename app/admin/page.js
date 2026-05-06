@@ -7,18 +7,20 @@ import { supabase } from '@/lib/supabase';
 import CreateEventForm from './CreateEventForm';
 import EditEventModal from './EditEventModal';
 
-const TABS = ['Overview', 'Events', 'Orders', 'New Event'];
-
 export default function AdminPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState('Overview');
   const [events, setEvents] = useState([]);
+  const [pendingEvents, setPendingEvents] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingEvent, setEditingEvent] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [rejectingEvent, setRejectingEvent] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [approvingId, setApprovingId] = useState(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -40,9 +42,24 @@ export default function AdminPage() {
       ordersQuery.eq('events.user_id', user.id);
     }
 
-    const [{ data: eventsData }, { data: ordersData }] = await Promise.all([eventsQuery, ordersQuery]);
+    const promises = [eventsQuery, ordersQuery];
+
+    if (isAdmin) {
+      promises.push(
+        supabase.from('events').select('*').eq('status', 'pending').order('created_at', { ascending: true })
+      );
+    }
+
+    const results = await Promise.all(promises);
+    const [{ data: eventsData }, { data: ordersData }] = results;
+
     setEvents(eventsData ?? []);
     setOrders((ordersData ?? []).filter((o) => o.events !== null));
+
+    if (isAdmin && results[2]) {
+      setPendingEvents(results[2].data ?? []);
+    }
+
     setLoading(false);
   }, [user, isAdmin]);
 
@@ -61,6 +78,32 @@ export default function AdminPage() {
     fetchData();
   }
 
+  async function approveEvent(eventId) {
+    setApprovingId(eventId);
+    await fetch('/api/event-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId, status: 'approved' }),
+    });
+    setApprovingId(null);
+    fetchData();
+  }
+
+  async function rejectEvent() {
+    if (!rejectingEvent) return;
+    setApprovingId(rejectingEvent.id);
+    await fetch('/api/event-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId: rejectingEvent.id, status: 'rejected', reason: rejectReason }),
+    });
+    setRejectingEvent(null);
+    setRejectReason('');
+    setApprovingId(null);
+    fetchData();
+  }
+
+  const tabs = isAdmin ? ['Overview', 'Approvals', 'Events', 'Orders', 'New Event'] : ['Overview', 'Events', 'Orders', 'New Event'];
   const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price ?? 0), 0);
   const ticketsSold = orders.reduce((sum, o) => sum + (o.quantity ?? 0), 0);
 
@@ -98,17 +141,22 @@ export default function AdminPage() {
         {/* Tab Nav */}
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex gap-1">
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                className={`relative px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                   tab === t
                     ? 'border-gray-900 text-gray-900'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
                 {t}
+                {t === 'Approvals' && pendingEvents.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-orange-500 text-white rounded-full">
+                    {pendingEvents.length}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -123,9 +171,18 @@ export default function AdminPage() {
             {tab === 'Overview' && (
               <OverviewTab events={events} orders={orders} totalRevenue={totalRevenue} ticketsSold={ticketsSold} isAdmin={isAdmin} />
             )}
+            {tab === 'Approvals' && isAdmin && (
+              <ApprovalsTab
+                pendingEvents={pendingEvents}
+                approvingId={approvingId}
+                onApprove={approveEvent}
+                onReject={setRejectingEvent}
+              />
+            )}
             {tab === 'Events' && (
               <EventsTab
                 events={events}
+                isAdmin={isAdmin}
                 deletingId={deletingId}
                 onEdit={setEditingEvent}
                 onDelete={deleteEvent}
@@ -136,6 +193,7 @@ export default function AdminPage() {
               <div className="max-w-2xl">
                 <CreateEventForm
                   userId={user.id}
+                  userEmail={user.email}
                   onCreated={() => { fetchData(); setTab('Events'); }}
                 />
               </div>
@@ -150,6 +208,40 @@ export default function AdminPage() {
           onClose={() => setEditingEvent(null)}
           onSaved={fetchData}
         />
+      )}
+
+      {/* Reject reason modal */}
+      {rejectingEvent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Reject event</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Rejecting <strong>{rejectingEvent.title}</strong>. Optionally provide a reason for the organizer.
+            </p>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Reason (optional)…"
+              rows={3}
+              className="input resize-none mb-4"
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setRejectingEvent(null); setRejectReason(''); }}
+                className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg border border-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={rejectEvent}
+                disabled={!!approvingId}
+                className="text-sm font-medium bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                {approvingId ? 'Rejecting…' : 'Reject Event'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -220,8 +312,79 @@ function StatCard({ label, value, icon }) {
   );
 }
 
+/* ── Approvals ── */
+function ApprovalsTab({ pendingEvents, approvingId, onApprove, onReject }) {
+  if (pendingEvents.length === 0) {
+    return (
+      <div className="text-center py-24">
+        <p className="text-gray-400 text-sm">No pending events. You're all caught up.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">{pendingEvents.length} event{pendingEvents.length !== 1 ? 's' : ''} awaiting review</p>
+      {pendingEvents.map((event) => (
+        <div key={event.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-semibold text-gray-900">{event.title}</h3>
+              {event.description && (
+                <p className="text-sm text-gray-500 mt-1 line-clamp-2">{event.description}</p>
+              )}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-500">
+                <span>
+                  {new Date(event.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                  {' · '}
+                  {new Date(event.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </span>
+                <span>{event.location}</span>
+                <span>{parseFloat(event.price) === 0 ? 'Free' : `$${parseFloat(event.price).toFixed(2)}`}</span>
+                <span>{event.total_tickets} tickets</span>
+                {event.organizer_email && <span>by {event.organizer_email}</span>}
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => onReject(event)}
+                disabled={!!approvingId}
+                className="text-sm font-medium text-red-600 hover:text-red-800 px-4 py-2 rounded-lg border border-red-200 hover:border-red-300 transition-colors disabled:opacity-50"
+              >
+                Reject
+              </button>
+              <button
+                onClick={() => onApprove(event.id)}
+                disabled={!!approvingId}
+                className="text-sm font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                {approvingId === event.id ? 'Approving…' : 'Approve'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Status badge ── */
+function StatusBadge({ status }) {
+  const styles = {
+    approved: 'bg-green-50 text-green-700 border-green-200',
+    pending: 'bg-orange-50 text-orange-600 border-orange-200',
+    rejected: 'bg-red-50 text-red-600 border-red-200',
+  };
+  const labels = { approved: 'Live', pending: 'Pending', rejected: 'Rejected' };
+  return (
+    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${styles[status] ?? 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+      {labels[status] ?? status}
+    </span>
+  );
+}
+
 /* ── Events ── */
-function EventsTab({ events, deletingId, onEdit, onDelete }) {
+function EventsTab({ events, isAdmin, deletingId, onEdit, onDelete }) {
   if (events.length === 0) {
     return <p className="text-gray-400 text-sm py-12 text-center">No events yet.</p>;
   }
@@ -235,6 +398,7 @@ function EventsTab({ events, deletingId, onEdit, onDelete }) {
             <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">Date</th>
             <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">Price</th>
             <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">Tickets</th>
+            <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">Status</th>
             <th className="px-6 py-3" />
           </tr>
         </thead>
@@ -261,6 +425,14 @@ function EventsTab({ events, deletingId, onEdit, onDelete }) {
                   </div>
                   <span className="text-xs text-gray-500">{event.tickets_remaining}/{event.total_tickets}</span>
                 </div>
+              </td>
+              <td className="px-6 py-4">
+                <StatusBadge status={event.status ?? 'pending'} />
+                {event.status === 'rejected' && event.rejection_reason && (
+                  <p className="text-[11px] text-gray-400 mt-1 max-w-[160px] truncate" title={event.rejection_reason}>
+                    {event.rejection_reason}
+                  </p>
+                )}
               </td>
               <td className="px-6 py-4">
                 <div className="flex items-center justify-end gap-2">
