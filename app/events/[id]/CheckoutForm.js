@@ -13,13 +13,14 @@ const emptyForm = {
   quantity: 1,
 };
 
-export default function CheckoutForm({ event }) {
+export default function CheckoutForm({ event, selectedTier }) {
   const [form, setForm] = useState(emptyForm);
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const price = parseFloat(event.price);
+  const price = selectedTier ? parseFloat(selectedTier.price) : parseFloat(event.price);
+  const maxQty = selectedTier ? selectedTier.quantity_remaining : event.tickets_remaining;
   const total = (price * form.quantity).toFixed(2);
   const isFree = price === 0;
   const emailMismatch = form.confirmEmail && form.confirmEmail !== form.email;
@@ -54,8 +55,8 @@ export default function CheckoutForm({ event }) {
       return;
     }
 
-    if (form.quantity > event.tickets_remaining) {
-      setErrorMsg(`Only ${event.tickets_remaining} tickets are available.`);
+    if (form.quantity > maxQty) {
+      setErrorMsg(`Only ${maxQty} tickets are available.`);
       setStatus('error');
       return;
     }
@@ -74,6 +75,8 @@ export default function CheckoutForm({ event }) {
         quantity: form.quantity,
         total_price: parseFloat(total),
         user_id: loggedInUser?.id ?? null,
+        tier_id: selectedTier?.id ?? null,
+        tier_name: selectedTier?.name ?? null,
       })
       .select('id')
       .single();
@@ -84,15 +87,18 @@ export default function CheckoutForm({ event }) {
       return;
     }
 
-    const { error: updateError } = await supabase
+    // Decrement event tickets_remaining
+    await supabase
       .from('events')
       .update({ tickets_remaining: event.tickets_remaining - form.quantity })
       .eq('id', event.id);
 
-    if (updateError) {
-      setErrorMsg('Order placed but ticket count could not be updated.');
-      setStatus('error');
-      return;
+    // Decrement tier quantity_remaining if applicable
+    if (selectedTier) {
+      await supabase
+        .from('ticket_tiers')
+        .update({ quantity_remaining: selectedTier.quantity_remaining - form.quantity })
+        .eq('id', selectedTier.id);
     }
 
     try {
@@ -121,14 +127,14 @@ export default function CheckoutForm({ event }) {
           </svg>
         </div>
         <p className="text-gray-900 font-semibold">You're registered!</p>
+        {selectedTier && (
+          <p className="text-sm text-gray-500 mt-0.5">{selectedTier.name} ticket</p>
+        )}
         <p className="text-gray-500 text-sm mt-1">
           Your ticket is on its way to <span className="font-medium">{form.email}</span>.
         </p>
         {loggedInUser ? (
-          <Link
-            href="/my-tickets"
-            className="mt-4 inline-block text-sm font-medium text-gray-900 hover:underline"
-          >
+          <Link href="/my-tickets" className="mt-4 inline-block text-sm font-medium text-gray-900 hover:underline">
             View my tickets →
           </Link>
         ) : (
@@ -208,7 +214,7 @@ export default function CheckoutForm({ event }) {
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-gray-700">Quantity</label>
         <select name="quantity" value={form.quantity} onChange={handleChange} className="input">
-          {Array.from({ length: Math.min(10, event.tickets_remaining) }, (_, i) => i + 1).map((n) => (
+          {Array.from({ length: Math.min(10, maxQty) }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>{n}</option>
           ))}
         </select>

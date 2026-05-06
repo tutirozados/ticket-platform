@@ -118,6 +118,13 @@ function TicketPDF({ event, order, tickets }) {
               <Text style={styles.label}>Attendee</Text>
               <Text style={styles.value}>{order.first_name && order.last_name ? `${order.first_name} ${order.last_name}` : order.buyer_name}</Text>
 
+              {order.tier_name ? (
+                <>
+                  <Text style={styles.label}>Tier</Text>
+                  <Text style={styles.ticketNumber}>{order.tier_name}</Text>
+                </>
+              ) : null}
+
               <Text style={styles.label}>Ticket</Text>
               <Text style={styles.ticketNumber}>{i + 1} of {order.quantity}</Text>
             </View>
@@ -196,6 +203,8 @@ export async function POST(request) {
       event_id: order.event_id,
       ticket_code: crypto.randomUUID(),
       is_used: false,
+      tier_id: order.tier_id ?? null,
+      tier_name: order.tier_name ?? null,
     }));
 
     const { data: created, error: ticketError } = await supabase

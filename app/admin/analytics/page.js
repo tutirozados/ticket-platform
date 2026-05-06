@@ -263,6 +263,43 @@ export default function AnalyticsPage() {
           )}
         </div>
 
+        {/* Tier breakdown */}
+        {(() => {
+          const tierRows = buildTierData(orders, events);
+          if (tierRows.length === 0) return null;
+          return (
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-widest">Sales by Tier</h2>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">Event</th>
+                    <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">Tier</th>
+                    <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">Tickets Sold</th>
+                    <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {tierRows.map((row) => (
+                    <tr key={row.key} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-gray-600">{row.eventTitle}</td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                          {row.tierName}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-700 font-medium">{row.quantity}</td>
+                      <td className="px-6 py-4 font-semibold text-gray-900">${row.revenue.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+
       </main>
     </div>
   );
@@ -290,6 +327,23 @@ function buildChartData(orders) {
   });
 
   return Object.entries(days).map(([date, revenue]) => ({ date, revenue: revenue.toFixed(2) }));
+}
+
+function buildTierData(orders, events) {
+  const map = {};
+  const eventMap = Object.fromEntries(events.map((e) => [e.id, e.title]));
+
+  orders.forEach((o) => {
+    if (!o.tier_name) return;
+    const key = `${o.event_id}::${o.tier_name}`;
+    if (!map[key]) {
+      map[key] = { key, eventTitle: eventMap[o.event_id] ?? '—', tierName: o.tier_name, quantity: 0, revenue: 0 };
+    }
+    map[key].quantity += o.quantity ?? 0;
+    map[key].revenue += parseFloat(o.total_price ?? 0);
+  });
+
+  return Object.values(map).sort((a, b) => a.eventTitle.localeCompare(b.eventTitle));
 }
 
 function StatusBadge({ status }) {

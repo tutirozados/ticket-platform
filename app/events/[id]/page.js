@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import CheckoutForm from './CheckoutForm';
+import TierSelector from './TierSelector';
 import CustomerHeader from '@/app/components/CustomerHeader';
 
 export const revalidate = 0;
@@ -33,13 +34,26 @@ function formatTime(dateStr) {
   });
 }
 
+async function getTiers(eventId) {
+  const { data } = await supabase
+    .from('ticket_tiers')
+    .select('*')
+    .eq('event_id', eventId)
+    .eq('is_active', true)
+    .order('price', { ascending: true });
+  return data ?? [];
+}
+
 export default async function EventPage({ params }) {
   const { id } = await params;
-  const event = await getEvent(id);
+  const [event, tiers] = await Promise.all([getEvent(id), getTiers(id)]);
 
   if (!event) notFound();
 
-  const isSoldOut = event.tickets_remaining === 0;
+  const hasTiers = tiers.length > 0;
+  const isSoldOut = hasTiers
+    ? tiers.every((t) => t.quantity_remaining === 0)
+    : event.tickets_remaining === 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -110,24 +124,29 @@ export default async function EventPage({ params }) {
           {/* Checkout Card */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sticky top-6">
-              <div className="flex items-baseline justify-between mb-6">
-                <span className="text-2xl font-bold text-gray-900">
-                  {event.price === 0 || event.price === '0.00'
-                    ? 'Free'
-                    : `$${parseFloat(event.price).toFixed(2)}`}
-                </span>
-                {event.price > 0 && (
-                  <span className="text-sm text-gray-400">per ticket</span>
-                )}
-              </div>
-
-              {isSoldOut ? (
-                <div className="text-center py-6">
-                  <p className="text-red-500 font-semibold text-lg">Sold Out</p>
-                  <p className="text-gray-400 text-sm mt-1">No tickets available</p>
-                </div>
+              {hasTiers ? (
+                <TierSelector event={event} tiers={tiers} />
               ) : (
-                <CheckoutForm event={event} />
+                <>
+                  <div className="flex items-baseline justify-between mb-6">
+                    <span className="text-2xl font-bold text-gray-900">
+                      {event.price === 0 || event.price === '0.00'
+                        ? 'Free'
+                        : `$${parseFloat(event.price).toFixed(2)}`}
+                    </span>
+                    {event.price > 0 && (
+                      <span className="text-sm text-gray-400">per ticket</span>
+                    )}
+                  </div>
+                  {isSoldOut ? (
+                    <div className="text-center py-6">
+                      <p className="text-red-500 font-semibold text-lg">Sold Out</p>
+                      <p className="text-gray-400 text-sm mt-1">No tickets available</p>
+                    </div>
+                  ) : (
+                    <CheckoutForm event={event} />
+                  )}
+                </>
               )}
             </div>
           </div>
