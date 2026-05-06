@@ -124,6 +124,12 @@ export default function AdminPage() {
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-400 hidden sm:block">{user.email}</span>
             <Link
+              href="/admin/analytics"
+              className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              Analytics
+            </Link>
+            <Link
               href="/scan"
               className="text-sm font-medium bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
             >
