@@ -18,11 +18,18 @@ export default function CheckoutForm({ event, selectedTier }) {
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [discountInput, setDiscountInput] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState(null);
+  const [discountStatus, setDiscountStatus] = useState(null);
+  const [discountError, setDiscountError] = useState('');
 
-  const price = selectedTier ? parseFloat(selectedTier.price) : parseFloat(event.price);
+  const price = selectedTier ? parseFloat(selectedTier.effective_price ?? selectedTier.price) : parseFloat(event.price);
   const maxQty = selectedTier ? selectedTier.quantity_remaining : event.tickets_remaining;
-  const total = (price * form.quantity).toFixed(2);
-  const isFree = price === 0;
+  const baseTotal = price * form.quantity;
+  const discountAmount = appliedDiscount?.amount ?? 0;
+  const finalTotal = Math.max(0, baseTotal - discountAmount);
+  const total = finalTotal.toFixed(2);
+  const isFree = finalTotal === 0;
   const emailMismatch = form.confirmEmail && form.confirmEmail !== form.email;
 
   useEffect(() => {
@@ -43,6 +50,26 @@ export default function CheckoutForm({ event, selectedTier }) {
   function handleChange(e) {
     const value = e.target.name === 'quantity' ? parseInt(e.target.value, 10) : e.target.value;
     setForm((prev) => ({ ...prev, [e.target.name]: value }));
+  }
+
+  async function applyDiscount() {
+    if (!discountInput.trim()) return;
+    setDiscountStatus('loading');
+    setDiscountError('');
+    const res = await fetch('/api/validate-discount', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: discountInput, eventId: event.id, subtotal: baseTotal }),
+    });
+    const data = await res.json();
+    if (data.valid) {
+      setAppliedDiscount(data);
+      setDiscountStatus('valid');
+    } else {
+      setAppliedDiscount(null);
+      setDiscountStatus('invalid');
+      setDiscountError(data.error);
+    }
   }
 
   async function handleSubmit(e) {
@@ -77,6 +104,10 @@ export default function CheckoutForm({ event, selectedTier }) {
         user_id: loggedInUser?.id ?? null,
         tier_id: selectedTier?.id ?? null,
         tier_name: selectedTier?.name ?? null,
+        discount_code_id: appliedDiscount?.codeId ?? null,
+        discount_code: appliedDiscount?.code ?? null,
+        discount_amount: appliedDiscount?.amount ?? 0,
+        is_early_bird: selectedTier?.is_early_bird ?? false,
       })
       .select('id')
       .single();
@@ -95,10 +126,19 @@ export default function CheckoutForm({ event, selectedTier }) {
 
     // Decrement tier quantity_remaining if applicable
     if (selectedTier) {
+      const tierUpdate = { quantity_remaining: selectedTier.quantity_remaining - form.quantity };
+      if (selectedTier.is_early_bird) {
+        tierUpdate.early_bird_sold = (selectedTier.early_bird_sold ?? 0) + form.quantity;
+      }
+      await supabase.from('ticket_tiers').update(tierUpdate).eq('id', selectedTier.id);
+    }
+
+    // Increment discount code uses
+    if (appliedDiscount) {
       await supabase
-        .from('ticket_tiers')
-        .update({ quantity_remaining: selectedTier.quantity_remaining - form.quantity })
-        .eq('id', selectedTier.id);
+        .from('discount_codes')
+        .update({ times_used: appliedDiscount.currentUses + 1 })
+        .eq('id', appliedDiscount.codeId);
     }
 
     try {
@@ -220,14 +260,55 @@ export default function CheckoutForm({ event, selectedTier }) {
         </select>
       </div>
 
+      {/* Discount code */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-gray-700">Discount Code</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={discountInput}
+            onChange={(e) => {
+              setDiscountInput(e.target.value.toUpperCase());
+              if (appliedDiscount) { setAppliedDiscount(null); setDiscountStatus(null); }
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyDiscount(); } }}
+            placeholder="Enter code"
+            className="input flex-1 font-mono uppercase"
+            disabled={!!appliedDiscount}
+          />
+          <button
+            type="button"
+            onClick={appliedDiscount ? () => { setAppliedDiscount(null); setDiscountStatus(null); setDiscountInput(''); } : applyDiscount}
+            disabled={discountStatus === 'loading'}
+            className="text-sm font-medium px-3 py-2 border border-gray-200 rounded-lg hover:border-gray-300 text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap disabled:opacity-50"
+          >
+            {discountStatus === 'loading' ? '…' : appliedDiscount ? 'Remove' : 'Apply'}
+          </button>
+        </div>
+        {discountStatus === 'valid' && appliedDiscount && (
+          <p className="text-xs text-green-600 font-medium">
+            ✓ {appliedDiscount.type === 'percentage' ? `${appliedDiscount.value}%` : `$${appliedDiscount.value}`} off applied — you save ${appliedDiscount.amount.toFixed(2)}
+          </p>
+        )}
+        {discountStatus === 'invalid' && (
+          <p className="text-xs text-red-500">{discountError}</p>
+        )}
+      </div>
+
       <div className="border-t border-gray-100 pt-4 space-y-1.5">
         <div className="flex justify-between text-sm text-gray-500">
-          <span>{isFree ? 'Free' : `$${price.toFixed(2)}`} × {form.quantity}</span>
-          <span>{isFree ? 'Free' : `$${total}`}</span>
+          <span>{`$${price.toFixed(2)}`} × {form.quantity}</span>
+          <span>${baseTotal.toFixed(2)}</span>
         </div>
+        {appliedDiscount && (
+          <div className="flex justify-between text-sm text-green-600">
+            <span>Discount ({appliedDiscount.code})</span>
+            <span>−${discountAmount.toFixed(2)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-sm font-semibold text-gray-900">
           <span>Total</span>
-          <span>{isFree ? 'Free' : `$${total}`}</span>
+          <span>{finalTotal === 0 ? 'Free' : `$${total}`}</span>
         </div>
       </div>
 
@@ -236,7 +317,7 @@ export default function CheckoutForm({ event, selectedTier }) {
         disabled={status === 'loading' || emailMismatch}
         className="w-full bg-gray-900 hover:bg-gray-700 disabled:bg-gray-400 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors"
       >
-        {status === 'loading' ? 'Processing…' : isFree ? 'Register for Free' : `Pay $${total}`}
+        {status === 'loading' ? 'Processing…' : finalTotal === 0 ? 'Register for Free' : `Pay $${total}`}
       </button>
 
       <p className="text-xs text-center text-gray-400">

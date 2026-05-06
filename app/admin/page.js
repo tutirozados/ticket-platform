@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import CreateEventForm from './CreateEventForm';
 import EditEventModal from './EditEventModal';
+import DiscountCodesTab from './DiscountCodesTab';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -103,7 +104,7 @@ export default function AdminPage() {
     fetchData();
   }
 
-  const tabs = isAdmin ? ['Overview', 'Approvals', 'Events', 'Orders', 'New Event'] : ['Overview', 'Events', 'Orders', 'New Event'];
+  const tabs = isAdmin ? ['Overview', 'Approvals', 'Events', 'Orders', 'Discounts', 'New Event'] : ['Overview', 'Events', 'Orders', 'New Event'];
   const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price ?? 0), 0);
   const ticketsSold = orders.reduce((sum, o) => sum + (o.quantity ?? 0), 0);
 
@@ -195,6 +196,7 @@ export default function AdminPage() {
               />
             )}
             {tab === 'Orders' && <OrdersTab orders={orders} isAdmin={isAdmin} />}
+            {tab === 'Discounts' && isAdmin && <DiscountCodesTab events={events} />}
             {tab === 'New Event' && (
               <div className="max-w-2xl">
                 <CreateEventForm

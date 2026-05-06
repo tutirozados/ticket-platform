@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import CheckoutForm from './CheckoutForm';
 
 const COLOR = {
@@ -11,6 +11,41 @@ const COLOR = {
   amber:  { top: 'bg-amber-500',   badge: 'bg-amber-50 text-amber-700 border-amber-200',    ring: 'ring-2 ring-amber-400',   btn: 'bg-amber-500 hover:bg-amber-600' },
   rose:   { top: 'bg-rose-600',    badge: 'bg-rose-50 text-rose-700 border-rose-200',       ring: 'ring-2 ring-rose-400',    btn: 'bg-rose-600 hover:bg-rose-700' },
 };
+
+function getTimeLeft(deadline) {
+  const diff = new Date(deadline) - Date.now();
+  if (diff <= 0) return null;
+  return {
+    days: Math.floor(diff / 86400000),
+    hours: Math.floor((diff % 86400000) / 3600000),
+    minutes: Math.floor((diff % 3600000) / 60000),
+    seconds: Math.floor((diff % 60000) / 1000),
+  };
+}
+
+function checkEarlyBird(tier) {
+  if (!tier.early_bird_price) return false;
+  const deadlineOk = !tier.early_bird_deadline || new Date(tier.early_bird_deadline) > new Date();
+  const qtyOk = !tier.early_bird_quantity || (tier.early_bird_sold ?? 0) < tier.early_bird_quantity;
+  return deadlineOk && qtyOk;
+}
+
+function Countdown({ deadline }) {
+  const [timeLeft, setTimeLeft] = useState(() => getTimeLeft(deadline));
+
+  useEffect(() => {
+    const id = setInterval(() => setTimeLeft(getTimeLeft(deadline)), 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+
+  if (!timeLeft) return <span className="text-red-500">Ended</span>;
+  const { days, hours, minutes, seconds } = timeLeft;
+  return (
+    <span className="font-mono tabular-nums">
+      {days > 0 && `${days}d `}{String(hours).padStart(2, '0')}h {String(minutes).padStart(2, '0')}m {String(seconds).padStart(2, '0')}s
+    </span>
+  );
+}
 
 export default function TierSelector({ event, tiers }) {
   const [selectedTier, setSelectedTier] = useState(null);
@@ -34,7 +69,12 @@ export default function TierSelector({ event, tiers }) {
         const c = COLOR[tier.color] ?? COLOR.gray;
         const isSoldOut = tier.quantity_remaining === 0;
         const isSelected = selectedTier?.id === tier.id;
+        const isEarlyBird = checkEarlyBird(tier);
+        const displayPrice = isEarlyBird ? tier.early_bird_price : tier.price;
         const benefits = Array.isArray(tier.benefits) ? tier.benefits : [];
+        const ebRemaining = tier.early_bird_quantity
+          ? tier.early_bird_quantity - (tier.early_bird_sold ?? 0)
+          : null;
 
         return (
           <div
@@ -42,7 +82,11 @@ export default function TierSelector({ event, tiers }) {
             className={`rounded-2xl border overflow-hidden transition-all ${
               isSelected ? `border-transparent ${c.ring}` : 'border-gray-200'
             } ${isSoldOut ? 'opacity-50' : 'cursor-pointer hover:border-gray-300'}`}
-            onClick={() => !isSoldOut && setSelectedTier(isSelected ? null : tier)}
+            onClick={() => !isSoldOut && setSelectedTier(isSelected ? null : {
+              ...tier,
+              effective_price: displayPrice,
+              is_early_bird: isEarlyBird,
+            })}
           >
             <div className={`h-1.5 ${c.top}`} />
             <div className="p-4">
@@ -51,19 +95,45 @@ export default function TierSelector({ event, tiers }) {
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${c.badge}`}>
                     {tier.name}
                   </span>
+                  {isEarlyBird && (
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                      ⚡ Early Bird
+                    </span>
+                  )}
                   {isSoldOut && (
                     <span className="text-xs font-medium text-red-500 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
                       Sold Out
                     </span>
                   )}
                 </div>
-                <span className="text-xl font-bold text-gray-900 shrink-0">
-                  {parseFloat(tier.price) === 0 ? 'Free' : `$${parseFloat(tier.price).toFixed(2)}`}
-                </span>
+                <div className="text-right shrink-0">
+                  {isEarlyBird ? (
+                    <>
+                      <span className="text-xl font-bold text-gray-900">
+                        {parseFloat(tier.early_bird_price) === 0 ? 'Free' : `$${parseFloat(tier.early_bird_price).toFixed(2)}`}
+                      </span>
+                      <span className="block text-xs text-gray-400 line-through">
+                        ${parseFloat(tier.price).toFixed(2)}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-xl font-bold text-gray-900">
+                      {parseFloat(tier.price) === 0 ? 'Free' : `$${parseFloat(tier.price).toFixed(2)}`}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {tier.description && (
                 <p className="text-sm text-gray-500 mb-2">{tier.description}</p>
+              )}
+
+              {/* Early bird countdown */}
+              {isEarlyBird && tier.early_bird_deadline && (
+                <div className="mb-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex items-center justify-between gap-2">
+                  <span>Ends in</span>
+                  <Countdown deadline={tier.early_bird_deadline} />
+                </div>
               )}
 
               {benefits.length > 0 && (
@@ -79,12 +149,14 @@ export default function TierSelector({ event, tiers }) {
                 </ul>
               )}
 
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">
-                  {isSoldOut ? 'No tickets left' : `${tier.quantity_remaining} left`}
+              <div className="flex items-center justify-between text-xs text-gray-400">
+                <span>
+                  {isSoldOut ? 'No tickets left' : isEarlyBird && ebRemaining != null
+                    ? `${ebRemaining} early bird left`
+                    : `${tier.quantity_remaining} left`}
                 </span>
                 {!isSoldOut && (
-                  <span className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors text-white ${isSelected ? c.btn + ' opacity-80' : c.btn}`}>
+                  <span className={`font-medium px-3 py-1 rounded-lg text-white text-xs ${c.btn} transition-colors`}>
                     {isSelected ? '✓ Selected' : 'Select'}
                   </span>
                 )}

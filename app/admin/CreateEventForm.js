@@ -32,6 +32,10 @@ function newTier() {
     color: 'gray',
     benefits: [],
     benefitInput: '',
+    early_bird_enabled: false,
+    early_bird_price: '',
+    early_bird_quantity: '',
+    early_bird_deadline: '',
   };
 }
 
@@ -149,6 +153,10 @@ export default function CreateEventForm({ onCreated, userId, userEmail }) {
           color: t.color,
           benefits: t.benefits,
           is_active: true,
+          early_bird_price: t.early_bird_enabled && t.early_bird_price ? parseFloat(t.early_bird_price) : null,
+          early_bird_quantity: t.early_bird_enabled && t.early_bird_quantity ? parseInt(t.early_bird_quantity, 10) : null,
+          early_bird_deadline: t.early_bird_enabled && t.early_bird_deadline ? new Date(t.early_bird_deadline).toISOString() : null,
+          early_bird_sold: 0,
         }))
       );
       if (tierError) {
@@ -349,6 +357,39 @@ function TierCard({ tier, idx, total, onUpdate, onRemove, onAddBenefit, onRemove
               Add
             </button>
           </div>
+        </div>
+
+        {/* Early Bird */}
+        <div className="border-t border-gray-200 pt-3">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={tier.early_bird_enabled}
+              onChange={(e) => onUpdate('early_bird_enabled', e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-xs font-medium text-gray-700">⚡ Enable Early Bird Pricing</span>
+          </label>
+
+          {tier.early_bird_enabled && (
+            <div className="mt-3 grid grid-cols-3 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-gray-600">Early Bird Price<span className="text-red-500 ml-0.5">*</span></label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input type="number" value={tier.early_bird_price} onChange={(e) => onUpdate('early_bird_price', e.target.value)} min="0" step="0.01" placeholder="0.00" className="input pl-7 text-sm" />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-gray-600">Qty at Early Price</label>
+                <input type="number" value={tier.early_bird_quantity} onChange={(e) => onUpdate('early_bird_quantity', e.target.value)} min="1" placeholder="50" className="input text-sm" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-gray-600">Deadline<span className="text-red-500 ml-0.5">*</span></label>
+                <input type="datetime-local" value={tier.early_bird_deadline} onChange={(e) => onUpdate('early_bird_deadline', e.target.value)} className="input text-sm" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
