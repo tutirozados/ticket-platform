@@ -14,5 +14,6 @@ export async function GET(request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/admin/login?error=auth`);
+  const errorPage = next.startsWith('/admin') ? '/admin/login' : '/login';
+  return NextResponse.redirect(`${origin}${errorPage}?error=auth`);
 }

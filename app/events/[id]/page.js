@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import CheckoutForm from './CheckoutForm';
+import CustomerHeader from '@/app/components/CustomerHeader';
 
 export const revalidate = 0;
 
@@ -42,17 +43,7 @@ export default async function EventPage({ params }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-gray-900 tracking-tight">
-            FOMO
-          </Link>
-          <Link href="/" className="text-sm text-gray-500 hover:text-gray-900 transition-colors">
-            ← All Events
-          </Link>
-        </div>
-      </header>
+      <CustomerHeader backLink={{ href: '/', label: '← All Events' }} />
 
       <main className="max-w-6xl mx-auto px-6 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">

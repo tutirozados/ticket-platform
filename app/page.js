@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import CustomerHeader from '@/app/components/CustomerHeader';
 
 export const revalidate = 60;
 
@@ -35,20 +36,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div>
-            <span className="text-xl font-bold text-gray-900 tracking-tight">FOMO</span>
-          </div>
-          <Link
-            href="/admin"
-            className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            Admin
-          </Link>
-        </div>
-      </header>
+      <CustomerHeader />
 
       {/* Hero */}
       <section className="bg-white border-b border-gray-200">

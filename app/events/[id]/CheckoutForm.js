@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
-const initialForm = {
+const emptyForm = {
   firstName: '',
   lastName: '',
   idNumber: '',
@@ -13,15 +14,30 @@ const initialForm = {
 };
 
 export default function CheckoutForm({ event }) {
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState(emptyForm);
+  const [loggedInUser, setLoggedInUser] = useState(null);
   const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   const price = parseFloat(event.price);
   const total = (price * form.quantity).toFixed(2);
   const isFree = price === 0;
-
   const emailMismatch = form.confirmEmail && form.confirmEmail !== form.email;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      setLoggedInUser(user);
+      const meta = user.user_metadata ?? {};
+      setForm((prev) => ({
+        ...prev,
+        firstName: meta.first_name ?? '',
+        lastName: meta.last_name ?? '',
+        email: user.email ?? '',
+        confirmEmail: user.email ?? '',
+      }));
+    });
+  }, []);
 
   function handleChange(e) {
     const value = e.target.name === 'quantity' ? parseInt(e.target.value, 10) : e.target.value;
@@ -57,6 +73,7 @@ export default function CheckoutForm({ event }) {
         id_number: form.idNumber,
         quantity: form.quantity,
         total_price: parseFloat(total),
+        user_id: loggedInUser?.id ?? null,
       })
       .select('id')
       .single();
@@ -107,12 +124,46 @@ export default function CheckoutForm({ event }) {
         <p className="text-gray-500 text-sm mt-1">
           Your ticket is on its way to <span className="font-medium">{form.email}</span>.
         </p>
+        {loggedInUser ? (
+          <Link
+            href="/my-tickets"
+            className="mt-4 inline-block text-sm font-medium text-gray-900 hover:underline"
+          >
+            View my tickets →
+          </Link>
+        ) : (
+          <p className="mt-4 text-xs text-gray-400">
+            <Link href="/signup" className="text-gray-700 font-medium hover:underline">Create an account</Link>
+            {' '}to view your tickets anytime.
+          </p>
+        )}
       </div>
     );
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {!loggedInUser && (
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600 flex items-center gap-2">
+          <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span>
+            <Link href={`/login?redirect=${encodeURIComponent(`/events/${event.id}`)}`} className="font-medium text-gray-900 hover:underline">Sign in</Link>
+            {' '}to save your tickets to your profile.
+          </span>
+        </div>
+      )}
+
+      {loggedInUser && (
+        <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700 flex items-center gap-2">
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Signed in — your ticket will be saved to your account.
+        </div>
+      )}
+
       {status === 'error' && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {errorMsg || 'Something went wrong. Please try again.'}
@@ -122,54 +173,22 @@ export default function CheckoutForm({ event }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-gray-700">First Name</label>
-          <input
-            type="text"
-            name="firstName"
-            value={form.firstName}
-            onChange={handleChange}
-            placeholder="Jane"
-            required
-            className="input"
-          />
+          <input type="text" name="firstName" value={form.firstName} onChange={handleChange} placeholder="Jane" required className="input" />
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-gray-700">Last Name</label>
-          <input
-            type="text"
-            name="lastName"
-            value={form.lastName}
-            onChange={handleChange}
-            placeholder="Smith"
-            required
-            className="input"
-          />
+          <input type="text" name="lastName" value={form.lastName} onChange={handleChange} placeholder="Smith" required className="input" />
         </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-gray-700">ID Number (Cédula)</label>
-        <input
-          type="text"
-          name="idNumber"
-          value={form.idNumber}
-          onChange={handleChange}
-          placeholder="0000000000"
-          required
-          className="input"
-        />
+        <input type="text" name="idNumber" value={form.idNumber} onChange={handleChange} placeholder="0000000000" required className="input" />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-gray-700">Email</label>
-        <input
-          type="email"
-          name="email"
-          value={form.email}
-          onChange={handleChange}
-          placeholder="jane@example.com"
-          required
-          className="input"
-        />
+        <input type="email" name="email" value={form.email} onChange={handleChange} placeholder="jane@example.com" required className="input" />
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -183,18 +202,13 @@ export default function CheckoutForm({ event }) {
           required
           className={`input ${emailMismatch ? 'border-red-400 focus:border-red-500 focus:ring-red-500/10' : ''}`}
         />
-        {emailMismatch && (
-          <p className="text-xs text-red-500">Email addresses do not match.</p>
-        )}
+        {emailMismatch && <p className="text-xs text-red-500">Email addresses do not match.</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-gray-700">Quantity</label>
         <select name="quantity" value={form.quantity} onChange={handleChange} className="input">
-          {Array.from(
-            { length: Math.min(10, event.tickets_remaining) },
-            (_, i) => i + 1
-          ).map((n) => (
+          {Array.from({ length: Math.min(10, event.tickets_remaining) }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>{n}</option>
           ))}
         </select>

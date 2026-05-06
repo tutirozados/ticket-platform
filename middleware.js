@@ -26,20 +26,30 @@ export async function middleware(request) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
+  const { pathname } = request.nextUrl;
 
-  const isLoginPage = request.nextUrl.pathname === '/admin/login';
-
-  if (!user && !isLoginPage) {
-    return NextResponse.redirect(new URL('/admin/login', request.url));
+  // Admin routes
+  if (pathname.startsWith('/admin')) {
+    if (!user && pathname !== '/admin/login') {
+      return NextResponse.redirect(new URL('/admin/login', request.url));
+    }
+    if (user && pathname === '/admin/login') {
+      return NextResponse.redirect(new URL('/admin', request.url));
+    }
   }
 
-  if (user && isLoginPage) {
-    return NextResponse.redirect(new URL('/admin', request.url));
+  // Customer routes
+  if (pathname.startsWith('/my-tickets') && !user) {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  if ((pathname === '/login' || pathname === '/signup') && user) {
+    return NextResponse.redirect(new URL('/my-tickets', request.url));
   }
 
   return supabaseResponse;
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin/:path*', '/my-tickets', '/login', '/signup'],
 };
