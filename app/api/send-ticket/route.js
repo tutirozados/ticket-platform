@@ -138,11 +138,21 @@ function TicketPDF({ event, order, tickets }) {
 }
 
 export async function POST(request) {
-  const { orderId } = await request.json();
+  let orderId;
+
+  try {
+    const body = await request.json();
+    orderId = body.orderId;
+  } catch (err) {
+    console.error('[send-ticket] Failed to parse request body:', err);
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
 
   if (!orderId) {
     return NextResponse.json({ error: 'orderId is required' }, { status: 400 });
   }
+
+  console.log('[send-ticket] Processing order:', orderId);
 
   // Fetch order
   const { data: order, error: orderError } = await supabase
@@ -152,6 +162,7 @@ export async function POST(request) {
     .single();
 
   if (orderError || !order) {
+    console.error('[send-ticket] Order not found:', orderId, orderError);
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
 
@@ -163,14 +174,19 @@ export async function POST(request) {
     .single();
 
   if (eventError || !event) {
+    console.error('[send-ticket] Event not found for order:', orderId, eventError);
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
   // Fetch or create tickets for this order
-  let { data: existingTickets } = await supabase
+  let { data: existingTickets, error: fetchTicketsError } = await supabase
     .from('tickets')
     .select('*')
     .eq('order_id', orderId);
+
+  if (fetchTicketsError) {
+    console.error('[send-ticket] Failed to fetch tickets:', fetchTicketsError);
+  }
 
   let ticketRecords = existingTickets ?? [];
 
@@ -188,10 +204,14 @@ export async function POST(request) {
       .select();
 
     if (ticketError) {
+      console.error('[send-ticket] Failed to create tickets:', ticketError);
       return NextResponse.json({ error: 'Failed to create tickets' }, { status: 500 });
     }
 
+    console.log('[send-ticket] Created', created.length, 'ticket(s) for order:', orderId);
     ticketRecords = created;
+  } else {
+    console.log('[send-ticket] Using', ticketRecords.length, 'existing ticket(s) for order:', orderId);
   }
 
   // Generate QR codes
@@ -203,9 +223,16 @@ export async function POST(request) {
   );
 
   // Render PDF
-  const pdfBuffer = await renderToBuffer(
-    <TicketPDF event={event} order={order} tickets={ticketsWithQR} />
-  );
+  let pdfBuffer;
+  try {
+    pdfBuffer = await renderToBuffer(
+      <TicketPDF event={event} order={order} tickets={ticketsWithQR} />
+    );
+    console.log('[send-ticket] PDF rendered successfully for order:', orderId);
+  } catch (err) {
+    console.error('[send-ticket] PDF rendering failed:', err);
+    return NextResponse.json({ error: 'Failed to render PDF' }, { status: 500 });
+  }
 
   // Send email
   const { error: emailError } = await sendTicketEmail({
@@ -216,8 +243,10 @@ export async function POST(request) {
   });
 
   if (emailError) {
+    console.error('[send-ticket] Email sending failed for order:', orderId, emailError);
     return NextResponse.json({ error: 'Failed to send email', detail: emailError }, { status: 500 });
   }
 
+  console.log('[send-ticket] Email sent successfully to:', order.buyer_email);
   return NextResponse.json({ success: true, ticketCount: ticketRecords.length });
 }

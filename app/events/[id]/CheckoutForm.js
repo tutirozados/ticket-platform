@@ -60,11 +60,19 @@ export default function CheckoutForm({ event }) {
     }
 
     // Create tickets and send PDF ticket email
-    await fetch('/api/send-ticket', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId: order.id }),
-    });
+    try {
+      const res = await fetch('/api/send-ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        console.error('[checkout] send-ticket failed:', detail);
+      }
+    } catch (err) {
+      console.error('[checkout] send-ticket request error:', err);
+    }
 
     setStatus('success');
   }
