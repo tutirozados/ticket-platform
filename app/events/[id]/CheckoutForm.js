@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { PayPalScriptProvider, PayPalCardFieldsProvider, PayPalCardFieldsForm, PayPalButtons, usePayPalCardFields, FUNDING } from '@paypal/react-paypal-js';
 import { supabase } from '@/lib/supabase';
 
-const PAYPAL_CLIENT_ID = process.env.NODE_ENV !== 'production'
+const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_LIVE !== 'true'
   ? process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID_SANDBOX
   : process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID_LIVE;
 
