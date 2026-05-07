@@ -1,8 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { PayPalScriptProvider, PayPalCardFieldsProvider, PayPalCardFieldsForm, PayPalButtons, usePayPalCardFields, FUNDING } from '@paypal/react-paypal-js';
 import { supabase } from '@/lib/supabase';
+
+const PAYPAL_CLIENT_ID = process.env.NODE_ENV !== 'production'
+  ? process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID_SANDBOX
+  : process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID_LIVE;
 
 const emptyForm = {
   firstName: '',
@@ -13,11 +18,43 @@ const emptyForm = {
   quantity: 1,
 };
 
+// Extracted so it can call usePayPalCardFields inside the provider
+function CardSubmitButton({ onApprove, onError, disabled }) {
+  const { cardFieldsForm, fields } = usePayPalCardFields();
+
+  async function handlePay() {
+    if (!cardFieldsForm) return;
+    const state = await cardFieldsForm.getState();
+    if (!state.isFormValid) {
+      onError('Please fill in all card fields correctly.');
+      return;
+    }
+    try {
+      await cardFieldsForm.submit({ billingAddress: {} });
+    } catch (err) {
+      onError(err?.message ?? 'Card payment failed.');
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handlePay}
+      disabled={disabled}
+      className="w-full bg-gray-900 hover:bg-gray-700 disabled:bg-gray-400 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors"
+    >
+      {disabled ? 'Processing…' : 'Pay with Card'}
+    </button>
+  );
+}
+
 export default function CheckoutForm({ event, selectedTier }) {
   const [form, setForm] = useState(emptyForm);
   const [loggedInUser, setLoggedInUser] = useState(null);
-  const [status, setStatus] = useState(null);
+  const [step, setStep] = useState('info'); // 'info' | 'payment' | 'success'
   const [errorMsg, setErrorMsg] = useState('');
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+
   const [discountInput, setDiscountInput] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(null);
   const [discountStatus, setDiscountStatus] = useState(null);
@@ -72,24 +109,8 @@ export default function CheckoutForm({ event, selectedTier }) {
     }
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setErrorMsg('');
-
-    if (form.email !== form.confirmEmail) {
-      setErrorMsg('Email addresses do not match.');
-      setStatus('error');
-      return;
-    }
-
-    if (form.quantity > maxQty) {
-      setErrorMsg(`Only ${maxQty} tickets are available.`);
-      setStatus('error');
-      return;
-    }
-
-    setStatus('loading');
-
+  // Creates the Supabase order and sends the ticket — called after payment (or free)
+  const completeOrder = useCallback(async (captureId = null) => {
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -108,23 +129,18 @@ export default function CheckoutForm({ event, selectedTier }) {
         discount_code: appliedDiscount?.code ?? null,
         discount_amount: appliedDiscount?.amount ?? 0,
         is_early_bird: selectedTier?.is_early_bird ?? false,
+        paypal_capture_id: captureId,
       })
       .select('id')
       .single();
 
-    if (orderError) {
-      setErrorMsg(orderError.message);
-      setStatus('error');
-      return;
-    }
+    if (orderError) throw new Error(orderError.message);
 
-    // Decrement event tickets_remaining
     await supabase
       .from('events')
       .update({ tickets_remaining: event.tickets_remaining - form.quantity })
       .eq('id', event.id);
 
-    // Decrement tier quantity_remaining if applicable
     if (selectedTier) {
       const tierUpdate = { quantity_remaining: selectedTier.quantity_remaining - form.quantity };
       if (selectedTier.is_early_bird) {
@@ -133,7 +149,6 @@ export default function CheckoutForm({ event, selectedTier }) {
       await supabase.from('ticket_tiers').update(tierUpdate).eq('id', selectedTier.id);
     }
 
-    // Increment discount code uses
     if (appliedDiscount) {
       await supabase
         .from('discount_codes')
@@ -152,13 +167,74 @@ export default function CheckoutForm({ event, selectedTier }) {
         console.error('[checkout] send-ticket failed:', detail);
       }
     } catch (err) {
-      console.error('[checkout] send-ticket request error:', err);
+      console.error('[checkout] send-ticket error:', err);
+    }
+  }, [event, form, total, loggedInUser, selectedTier, appliedDiscount]);
+
+  function handleInfoSubmit(e) {
+    e.preventDefault();
+    setErrorMsg('');
+
+    if (form.email !== form.confirmEmail) {
+      setErrorMsg('Email addresses do not match.');
+      return;
+    }
+    if (form.quantity > maxQty) {
+      setErrorMsg(`Only ${maxQty} tickets are available.`);
+      return;
     }
 
-    setStatus('success');
+    if (isFree) {
+      // Free ticket — skip payment
+      setPaymentProcessing(true);
+      completeOrder(null)
+        .then(() => setStep('success'))
+        .catch((err) => setErrorMsg(err.message))
+        .finally(() => setPaymentProcessing(false));
+    } else {
+      setStep('payment');
+    }
   }
 
-  if (status === 'success') {
+  // PayPal callbacks
+  async function createPayPalOrder() {
+    const res = await fetch('/api/paypal/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: total }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? 'Could not create PayPal order');
+    return data.id;
+  }
+
+  async function onPayPalApprove(data) {
+    setPaymentProcessing(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch('/api/paypal/capture-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: data.orderID }),
+      });
+      const capture = await res.json();
+      if (!res.ok) throw new Error(capture.error ?? 'Payment capture failed');
+      await completeOrder(capture.captureId);
+      setStep('success');
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setPaymentProcessing(false);
+    }
+  }
+
+  function onPayPalError(err) {
+    setErrorMsg(err?.message ?? 'PayPal encountered an error. Please try again.');
+    setPaymentProcessing(false);
+  }
+
+  // ── SUCCESS ──────────────────────────────────────────────────────────────────
+  if (step === 'success') {
     return (
       <div className="text-center py-4">
         <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
@@ -166,7 +242,7 @@ export default function CheckoutForm({ event, selectedTier }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <p className="text-gray-900 font-semibold">You're registered!</p>
+        <p className="text-gray-900 font-semibold">You&apos;re registered!</p>
         {selectedTier && (
           <p className="text-sm text-gray-500 mt-0.5">{selectedTier.name} ticket</p>
         )}
@@ -187,8 +263,86 @@ export default function CheckoutForm({ event, selectedTier }) {
     );
   }
 
+  // ── PAYMENT STEP ─────────────────────────────────────────────────────────────
+  if (step === 'payment') {
+    return (
+      <PayPalScriptProvider options={{
+        clientId: PAYPAL_CLIENT_ID,
+        components: 'card-fields,buttons',
+        currency: 'USD',
+      }}>
+        <div className="space-y-4">
+          {/* Order summary */}
+          <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 space-y-1">
+            <p className="text-sm font-semibold text-gray-800">Order summary</p>
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>{form.firstName} {form.lastName} · {form.quantity} ticket{form.quantity > 1 ? 's' : ''}</span>
+              <span>${baseTotal.toFixed(2)}</span>
+            </div>
+            {appliedDiscount && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Discount ({appliedDiscount.code})</span>
+                <span>−${discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm font-semibold text-gray-900 border-t border-gray-200 pt-1 mt-1">
+              <span>Total</span>
+              <span>${total}</span>
+            </div>
+          </div>
+
+          {errorMsg && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {errorMsg}
+            </div>
+          )}
+
+          {/* Card fields */}
+          <PayPalCardFieldsProvider
+            createOrder={createPayPalOrder}
+            onApprove={onPayPalApprove}
+            onError={onPayPalError}
+          >
+            <PayPalCardFieldsForm className="space-y-3" />
+            <CardSubmitButton
+              onApprove={onPayPalApprove}
+              onError={(msg) => setErrorMsg(msg)}
+              disabled={paymentProcessing}
+            />
+          </PayPalCardFieldsProvider>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400">or</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
+          {/* PayPal button */}
+          <PayPalButtons
+            fundingSource={FUNDING.PAYPAL}
+            createOrder={createPayPalOrder}
+            onApprove={onPayPalApprove}
+            onError={onPayPalError}
+            disabled={paymentProcessing}
+            style={{ layout: 'vertical', shape: 'rect', label: 'pay', height: 40 }}
+          />
+
+          <button
+            type="button"
+            onClick={() => { setStep('info'); setErrorMsg(''); }}
+            className="w-full text-sm text-gray-500 hover:text-gray-700 text-center"
+          >
+            ← Back
+          </button>
+        </div>
+      </PayPalScriptProvider>
+    );
+  }
+
+  // ── INFO STEP ─────────────────────────────────────────────────────────────────
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleInfoSubmit} className="space-y-4">
       {!loggedInUser && (
         <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600 flex items-center gap-2">
           <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -210,9 +364,9 @@ export default function CheckoutForm({ event, selectedTier }) {
         </div>
       )}
 
-      {status === 'error' && (
+      {errorMsg && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {errorMsg || 'Something went wrong. Please try again.'}
+          {errorMsg}
         </div>
       )}
 
@@ -295,6 +449,7 @@ export default function CheckoutForm({ event, selectedTier }) {
         )}
       </div>
 
+      {/* Totals */}
       <div className="border-t border-gray-100 pt-4 space-y-1.5">
         <div className="flex justify-between text-sm text-gray-500">
           <span>{`$${price.toFixed(2)}`} × {form.quantity}</span>
@@ -308,21 +463,17 @@ export default function CheckoutForm({ event, selectedTier }) {
         )}
         <div className="flex justify-between text-sm font-semibold text-gray-900">
           <span>Total</span>
-          <span>{finalTotal === 0 ? 'Free' : `$${total}`}</span>
+          <span>{isFree ? 'Free' : `$${total}`}</span>
         </div>
       </div>
 
       <button
         type="submit"
-        disabled={status === 'loading' || emailMismatch}
+        disabled={paymentProcessing || emailMismatch}
         className="w-full bg-gray-900 hover:bg-gray-700 disabled:bg-gray-400 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors"
       >
-        {status === 'loading' ? 'Processing…' : finalTotal === 0 ? 'Register for Free' : `Pay $${total}`}
+        {paymentProcessing ? 'Processing…' : isFree ? 'Register for Free' : 'Continue to Payment →'}
       </button>
-
-      <p className="text-xs text-center text-gray-400">
-        No payment required for now — Stripe coming soon.
-      </p>
     </form>
   );
 }
