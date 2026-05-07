@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { PayPalScriptProvider, PayPalCardFieldsProvider, PayPalCardFieldsForm, PayPalButtons, usePayPalCardFields, FUNDING } from '@paypal/react-paypal-js';
+import { PayPalScriptProvider, PayPalButtons, FUNDING } from '@paypal/react-paypal-js';
 import { supabase } from '@/lib/supabase';
 
 const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_LIVE !== 'true'
@@ -18,35 +18,6 @@ const emptyForm = {
   quantity: 1,
 };
 
-// Extracted so it can call usePayPalCardFields inside the provider
-function CardSubmitButton({ onApprove, onError, disabled }) {
-  const { cardFieldsForm, fields } = usePayPalCardFields();
-
-  async function handlePay() {
-    if (!cardFieldsForm) return;
-    const state = await cardFieldsForm.getState();
-    if (!state.isFormValid) {
-      onError('Please fill in all card fields correctly.');
-      return;
-    }
-    try {
-      await cardFieldsForm.submit({ billingAddress: {} });
-    } catch (err) {
-      onError(err?.message ?? 'Card payment failed.');
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handlePay}
-      disabled={disabled}
-      className="w-full bg-gray-900 hover:bg-gray-700 disabled:bg-gray-400 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors"
-    >
-      {disabled ? 'Processing…' : 'Pay with Card'}
-    </button>
-  );
-}
 
 export default function CheckoutForm({ event, selectedTier }) {
   const [form, setForm] = useState(emptyForm);
@@ -268,7 +239,7 @@ export default function CheckoutForm({ event, selectedTier }) {
     return (
       <PayPalScriptProvider options={{
         clientId: PAYPAL_CLIENT_ID,
-        components: 'card-fields,buttons',
+        components: 'buttons',
         currency: 'USD',
       }}>
         <div className="space-y-4">
@@ -297,28 +268,7 @@ export default function CheckoutForm({ event, selectedTier }) {
             </div>
           )}
 
-          {/* Card fields */}
-          <PayPalCardFieldsProvider
-            createOrder={createPayPalOrder}
-            onApprove={onPayPalApprove}
-            onError={onPayPalError}
-          >
-            <PayPalCardFieldsForm className="space-y-3" />
-            <CardSubmitButton
-              onApprove={onPayPalApprove}
-              onError={(msg) => setErrorMsg(msg)}
-              disabled={paymentProcessing}
-            />
-          </PayPalCardFieldsProvider>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs text-gray-400">or</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
-
-          {/* PayPal button */}
+          {/* PayPal wallet button */}
           <PayPalButtons
             fundingSource={FUNDING.PAYPAL}
             createOrder={createPayPalOrder}
@@ -326,6 +276,16 @@ export default function CheckoutForm({ event, selectedTier }) {
             onError={onPayPalError}
             disabled={paymentProcessing}
             style={{ layout: 'vertical', shape: 'rect', label: 'pay', height: 40 }}
+          />
+
+          {/* Card button — opens PayPal's hosted card payment page */}
+          <PayPalButtons
+            fundingSource={FUNDING.CARD}
+            createOrder={createPayPalOrder}
+            onApprove={onPayPalApprove}
+            onError={onPayPalError}
+            disabled={paymentProcessing}
+            style={{ layout: 'vertical', shape: 'rect', height: 40 }}
           />
 
           <button
