@@ -268,25 +268,18 @@ export default function CheckoutForm({ event, selectedTier }) {
             </div>
           )}
 
-          {/* PayPal wallet button */}
           <PayPalButtons
             fundingSource={FUNDING.PAYPAL}
             createOrder={createPayPalOrder}
             onApprove={onPayPalApprove}
             onError={onPayPalError}
             disabled={paymentProcessing}
-            style={{ layout: 'vertical', shape: 'rect', label: 'pay', height: 40 }}
+            style={{ layout: 'vertical', shape: 'rect', label: 'pay', height: 44 }}
           />
 
-          {/* Card button — opens PayPal's hosted card payment page */}
-          <PayPalButtons
-            fundingSource={FUNDING.CARD}
-            createOrder={createPayPalOrder}
-            onApprove={onPayPalApprove}
-            onError={onPayPalError}
-            disabled={paymentProcessing}
-            style={{ layout: 'vertical', shape: 'rect', height: 40 }}
-          />
+          <p className="text-xs text-center text-gray-400">
+            Secure payment via PayPal. No PayPal account? Pay with card after clicking the button above.
+          </p>
 
           <button
             type="button"
