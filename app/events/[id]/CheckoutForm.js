@@ -1,13 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { PayPalScriptProvider, PayPalButtons, FUNDING } from '@paypal/react-paypal-js';
 import { supabase } from '@/lib/supabase';
-
-const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_LIVE !== 'true'
-  ? process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID_SANDBOX
-  : process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID_LIVE;
 
 const SINPE_NUMBER = process.env.NEXT_PUBLIC_SINPE_NUMBER ?? '';
 const EXCHANGE_RATE = parseFloat(process.env.NEXT_PUBLIC_USD_TO_CRC_RATE ?? '515');
@@ -37,7 +32,6 @@ export default function CheckoutForm({ event, selectedTier }) {
   const [form, setForm] = useState(emptyForm);
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [step, setStep] = useState('info'); // info | payment | sinpe-pending | success
-  const [paymentMethod, setPaymentMethod] = useState('paypal'); // paypal | sinpe
   const [errorMsg, setErrorMsg] = useState('');
   const [paymentProcessing, setPaymentProcessing] = useState(false);
 
@@ -108,8 +102,8 @@ export default function CheckoutForm({ event, selectedTier }) {
     }
   }
 
-  // Creates Supabase order + sends ticket — for PayPal and free tickets
-  const completeOrder = useCallback(async (captureId = null) => {
+  // Creates Supabase order + sends ticket — for free tickets only
+  const completeOrder = useCallback(async () => {
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -128,8 +122,7 @@ export default function CheckoutForm({ event, selectedTier }) {
         discount_code: appliedDiscount?.code ?? null,
         discount_amount: appliedDiscount?.amount ?? 0,
         is_early_bird: selectedTier?.is_early_bird ?? false,
-        paypal_capture_id: captureId,
-        payment_method: captureId ? 'paypal' : 'free',
+        payment_method: 'free',
         payment_status: 'confirmed',
       })
       .select('id')
@@ -176,7 +169,7 @@ export default function CheckoutForm({ event, selectedTier }) {
 
     if (isFree) {
       setPaymentProcessing(true);
-      completeOrder(null)
+      completeOrder()
         .then(() => setStep('success'))
         .catch((err) => setErrorMsg(err.message))
         .finally(() => setPaymentProcessing(false));
@@ -224,43 +217,6 @@ export default function CheckoutForm({ event, selectedTier }) {
     } finally {
       setPaymentProcessing(false);
     }
-  }
-
-  // ── PayPal callbacks ──────────────────────────────────────────────────────
-  async function createPayPalOrder() {
-    const res = await fetch('/api/paypal/create-order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: total }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? 'Could not create PayPal order');
-    return data.id;
-  }
-
-  async function onPayPalApprove(data) {
-    setPaymentProcessing(true);
-    setErrorMsg('');
-    try {
-      const res = await fetch('/api/paypal/capture-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: data.orderID }),
-      });
-      const capture = await res.json();
-      if (!res.ok) throw new Error(capture.error ?? 'Payment capture failed');
-      await completeOrder(capture.captureId);
-      setStep('success');
-    } catch (err) {
-      setErrorMsg(err.message);
-    } finally {
-      setPaymentProcessing(false);
-    }
-  }
-
-  function onPayPalError(err) {
-    setErrorMsg(err?.message ?? 'PayPal encountered an error. Please try again.');
-    setPaymentProcessing(false);
   }
 
   // ── SINPE PENDING ─────────────────────────────────────────────────────────
@@ -337,55 +293,14 @@ export default function CheckoutForm({ event, selectedTier }) {
           </div>
         </div>
 
-        {/* Payment method tabs */}
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setPaymentMethod('paypal')}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${paymentMethod === 'paypal' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:text-gray-700'}`}
-          >
-            PayPal
-          </button>
-          <button
-            type="button"
-            onClick={() => setPaymentMethod('sinpe')}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors border-l border-gray-200 ${paymentMethod === 'sinpe' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:text-gray-700'}`}
-          >
-            SINPE Móvil
-          </button>
-        </div>
-
         {errorMsg && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
             {errorMsg}
           </div>
         )}
 
-        {/* PayPal */}
-        {paymentMethod === 'paypal' && (
-          <PayPalScriptProvider options={{ clientId: PAYPAL_CLIENT_ID, components: 'buttons', currency: 'USD' }}>
-            <PayPalButtons
-              fundingSource={FUNDING.PAYPAL}
-              createOrder={createPayPalOrder}
-              onApprove={onPayPalApprove}
-              onError={onPayPalError}
-              disabled={paymentProcessing}
-              style={{ layout: 'vertical', shape: 'rect', label: 'pay', height: 44 }}
-            />
-            <PayPalButtons
-              fundingSource={FUNDING.CARD}
-              createOrder={createPayPalOrder}
-              onApprove={onPayPalApprove}
-              onError={onPayPalError}
-              disabled={paymentProcessing}
-              style={{ layout: 'vertical', shape: 'rect', height: 44 }}
-            />
-          </PayPalScriptProvider>
-        )}
-
         {/* SINPE Móvil */}
-        {paymentMethod === 'sinpe' && (
-          <div className="space-y-4">
+        <div className="space-y-4">
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider">SINPE Móvil</span>
@@ -428,8 +343,7 @@ export default function CheckoutForm({ event, selectedTier }) {
             <p className="text-xs text-center text-gray-400">
               Tu entrada llegará por email una vez confirmemos la transferencia.
             </p>
-          </div>
-        )}
+        </div>
 
         <button
           type="button"
