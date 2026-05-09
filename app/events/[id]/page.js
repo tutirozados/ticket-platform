@@ -27,6 +27,13 @@ function formatDate(dateStr) {
   });
 }
 
+function fmtPrice(price, currency) {
+  const n = parseFloat(price);
+  if (n === 0) return 'Free';
+  if (currency === 'CRC') return `₡${Math.round(n).toLocaleString('es-CR')}`;
+  return `$${n.toFixed(2)}`;
+}
+
 function formatTime(dateStr) {
   return new Date(dateStr).toLocaleTimeString('en-US', {
     hour: 'numeric',
@@ -102,7 +109,7 @@ export default async function EventPage({ params }) {
                 <span className="text-sm font-semibold text-gray-900">
                   {event.price === 0 || event.price === '0.00'
                     ? 'Free'
-                    : `$${parseFloat(event.price).toFixed(2)} per ticket`}
+                    : `${fmtPrice(event.price, event.currency)} per ticket`}
                 </span>
               </div>
             </div>
@@ -130,9 +137,7 @@ export default async function EventPage({ params }) {
                 <>
                   <div className="flex items-baseline justify-between mb-6">
                     <span className="text-2xl font-bold text-gray-900">
-                      {event.price === 0 || event.price === '0.00'
-                        ? 'Free'
-                        : `$${parseFloat(event.price).toFixed(2)}`}
+                      {fmtPrice(event.price, event.currency)}
                     </span>
                     {event.price > 0 && (
                       <span className="text-sm text-gray-400">per ticket</span>

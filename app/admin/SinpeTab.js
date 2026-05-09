@@ -4,7 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const RATE = parseFloat(process.env.NEXT_PUBLIC_USD_TO_CRC_RATE ?? '515');
-const fmtCRC = (usd) => Math.round(parseFloat(usd) * RATE).toLocaleString('es-CR');
+function fmtCRC(amount, currency) {
+  const n = parseFloat(amount);
+  if (currency === 'CRC') return Math.round(n).toLocaleString('es-CR');
+  return Math.round(n * RATE).toLocaleString('es-CR');
+}
 
 export default function SinpeTab() {
   const [orders, setOrders] = useState([]);
@@ -16,7 +20,7 @@ export default function SinpeTab() {
     setLoading(true);
     const { data } = await supabase
       .from('orders')
-      .select('*, events(title)')
+      .select('*, events(title, currency)')
       .eq('payment_method', 'sinpe')
       .eq('payment_status', 'pending_sinpe')
       .order('created_at', { ascending: false });
@@ -111,8 +115,12 @@ export default function SinpeTab() {
                   <td className="px-6 py-4 text-gray-600">{order.events?.title ?? '—'}</td>
                   <td className="px-6 py-4 text-gray-600">{order.quantity}</td>
                   <td className="px-6 py-4">
-                    <p className="font-semibold text-gray-900">₡{fmtCRC(order.total_price)}</p>
-                    <p className="text-xs text-gray-400">${parseFloat(order.total_price).toFixed(2)}</p>
+                    <p className="font-semibold text-gray-900">₡{fmtCRC(order.total_price, order.events?.currency)}</p>
+                    <p className="text-xs text-gray-400">
+                      {order.events?.currency === 'CRC'
+                        ? `₡${Math.round(parseFloat(order.total_price)).toLocaleString('es-CR')}`
+                        : `$${parseFloat(order.total_price).toFixed(2)}`}
+                    </p>
                   </td>
                   <td className="px-6 py-4">
                     <span className="font-mono text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">

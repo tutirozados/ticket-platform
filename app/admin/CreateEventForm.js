@@ -20,6 +20,7 @@ const initialForm = {
   location: '',
   price: '',
   total_tickets: '',
+  currency: 'USD',
 };
 
 function newTier() {
@@ -126,6 +127,7 @@ export default function CreateEventForm({ onCreated, userId, userEmail }) {
         date: datetime,
         location: form.location,
         price: eventPrice,
+        currency: form.currency,
         total_tickets: totalTickets,
         tickets_remaining: totalTickets,
         user_id: userId,
@@ -209,13 +211,45 @@ export default function CreateEventForm({ onCreated, userId, userEmail }) {
           <input type="text" name="location" value={form.location} onChange={handleChange} placeholder="Venue name or address" required className="input" />
         </Field>
 
+        {/* Currency selector */}
+        <Field label="Currency">
+          <div className="flex gap-2">
+            {['USD', 'CRC'].map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setForm((prev) => ({ ...prev, currency: c }))}
+                className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  form.currency === c
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                {c === 'USD' ? '$ USD' : '₡ CRC'}
+              </button>
+            ))}
+          </div>
+        </Field>
+
         {/* Price + Qty — hidden when tiers are used */}
         {!hasTiers && (
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Price (USD)" required>
+            <Field label={`Price (${form.currency})`} required>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                <input type="number" name="price" value={form.price} onChange={handleChange} min="0" step="0.01" placeholder="0.00" required className="input pl-7" />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                  {form.currency === 'CRC' ? '₡' : '$'}
+                </span>
+                <input
+                  type="number"
+                  name="price"
+                  value={form.price}
+                  onChange={handleChange}
+                  min="0"
+                  step={form.currency === 'CRC' ? '1' : '0.01'}
+                  placeholder={form.currency === 'CRC' ? '0' : '0.00'}
+                  required
+                  className="input pl-7"
+                />
               </div>
             </Field>
             <Field label="Total Tickets" required>
@@ -245,6 +279,7 @@ export default function CreateEventForm({ onCreated, userId, userEmail }) {
                 tier={tier}
                 idx={idx}
                 total={tiers.length}
+                currency={form.currency}
                 onUpdate={(f, v) => updateTier(tier._key, f, v)}
                 onRemove={() => removeTier(tier._key)}
                 onAddBenefit={() => addBenefit(tier._key)}
@@ -267,7 +302,10 @@ export default function CreateEventForm({ onCreated, userId, userEmail }) {
   );
 }
 
-function TierCard({ tier, idx, total, onUpdate, onRemove, onAddBenefit, onRemoveBenefit, onDragStart, onDragOver, onDrop }) {
+function TierCard({ tier, idx, total, currency = 'USD', onUpdate, onRemove, onAddBenefit, onRemoveBenefit, onDragStart, onDragOver, onDrop }) {
+  const currSym = currency === 'CRC' ? '₡' : '$';
+  const currStep = currency === 'CRC' ? '1' : '0.01';
+  const currPlaceholder = currency === 'CRC' ? '0' : '0.00';
   return (
     <div
       className="border border-gray-200 rounded-xl p-4 bg-gray-50"
@@ -318,10 +356,10 @@ function TierCard({ tier, idx, total, onUpdate, onRemove, onAddBenefit, onRemove
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-600">Price (USD)<span className="text-red-500 ml-0.5">*</span></label>
+            <label className="text-xs font-medium text-gray-600">Price ({currency})<span className="text-red-500 ml-0.5">*</span></label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-              <input type="number" value={tier.price} onChange={(e) => onUpdate('price', e.target.value)} min="0" step="0.01" placeholder="0.00" className="input pl-7 text-sm" />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{currSym}</span>
+              <input type="number" value={tier.price} onChange={(e) => onUpdate('price', e.target.value)} min="0" step={currStep} placeholder={currPlaceholder} className="input pl-7 text-sm" />
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -376,8 +414,8 @@ function TierCard({ tier, idx, total, onUpdate, onRemove, onAddBenefit, onRemove
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-gray-600">Early Bird Price<span className="text-red-500 ml-0.5">*</span></label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                  <input type="number" value={tier.early_bird_price} onChange={(e) => onUpdate('early_bird_price', e.target.value)} min="0" step="0.01" placeholder="0.00" className="input pl-7 text-sm" />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{currSym}</span>
+                  <input type="number" value={tier.early_bird_price} onChange={(e) => onUpdate('early_bird_price', e.target.value)} min="0" step={currStep} placeholder={currPlaceholder} className="input pl-7 text-sm" />
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">

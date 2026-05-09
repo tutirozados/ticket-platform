@@ -54,6 +54,12 @@ export default function CheckoutForm({ event, selectedTier }) {
       .catch(() => {});
   }, []);
 
+  const currency = event.currency ?? 'USD';
+  const isCRC = currency === 'CRC';
+  const fmtAmt = (n) => isCRC
+    ? `₡${Math.round(n).toLocaleString('es-CR')}`
+    : `$${parseFloat(n).toFixed(2)}`;
+
   const price = selectedTier ? parseFloat(selectedTier.effective_price ?? selectedTier.price) : parseFloat(event.price);
   const maxQty = selectedTier ? selectedTier.quantity_remaining : event.tickets_remaining;
   const baseTotal = price * form.quantity;
@@ -61,7 +67,7 @@ export default function CheckoutForm({ event, selectedTier }) {
   const finalTotal = Math.max(0, baseTotal - discountAmount);
   const total = finalTotal.toFixed(2);
   const isFree = finalTotal === 0;
-  const crcAmount = Math.round(finalTotal * exchangeRate);
+  const crcAmount = isCRC ? Math.round(finalTotal) : Math.round(finalTotal * exchangeRate);
   const emailMismatch = form.confirmEmail && form.confirmEmail !== form.email;
 
   useEffect(() => {
@@ -83,10 +89,10 @@ export default function CheckoutForm({ event, selectedTier }) {
   useEffect(() => {
     if (step !== 'payment' || qrDataUrl) return;
     import('qrcode').then((QRCode) => {
-      const text = `SINPE Móvil\nNúmero: ${sinpeNumber}\nMonto: ₡${crcAmount.toLocaleString('es-CR')}\nReferencia: ${sinpeRef}`;
+      const text = `SINPE Movil\nNum: ${formatPhone(sinpeNumber)}\nMonto: CRC ${crcAmount.toLocaleString('es-CR')}\nRef: ${sinpeRef}`;
       QRCode.default.toDataURL(text, { width: 200, margin: 2 }).then(setQrDataUrl);
     });
-  }, [step, qrDataUrl, crcAmount, sinpeRef]);
+  }, [step, qrDataUrl, crcAmount, sinpeRef, sinpeNumber]);
 
   function handleChange(e) {
     const value = e.target.name === 'quantity' ? parseInt(e.target.value, 10) : e.target.value;
@@ -290,17 +296,17 @@ export default function CheckoutForm({ event, selectedTier }) {
           <p className="text-sm font-semibold text-gray-800">Order summary</p>
           <div className="flex justify-between text-sm text-gray-500">
             <span>{form.firstName} {form.lastName} · {form.quantity} ticket{form.quantity > 1 ? 's' : ''}</span>
-            <span>${baseTotal.toFixed(2)}</span>
+            <span>{fmtAmt(baseTotal)}</span>
           </div>
           {appliedDiscount && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Discount ({appliedDiscount.code})</span>
-              <span>−${discountAmount.toFixed(2)}</span>
+              <span>−{fmtAmt(discountAmount)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm font-semibold text-gray-900 border-t border-gray-200 pt-1 mt-1">
             <span>Total</span>
-            <span>${total}</span>
+            <span>{fmtAmt(finalTotal)}</span>
           </div>
         </div>
 
@@ -468,7 +474,7 @@ export default function CheckoutForm({ event, selectedTier }) {
         </div>
         {discountStatus === 'valid' && appliedDiscount && (
           <p className="text-xs text-green-600 font-medium">
-            ✓ {appliedDiscount.type === 'percentage' ? `${appliedDiscount.value}%` : `$${appliedDiscount.value}`} off applied — you save ${appliedDiscount.amount.toFixed(2)}
+            ✓ {appliedDiscount.type === 'percentage' ? `${appliedDiscount.value}%` : fmtAmt(appliedDiscount.value)} off applied — you save {fmtAmt(appliedDiscount.amount)}
           </p>
         )}
         {discountStatus === 'invalid' && <p className="text-xs text-red-500">{discountError}</p>}
@@ -477,18 +483,18 @@ export default function CheckoutForm({ event, selectedTier }) {
       {/* Totals */}
       <div className="border-t border-gray-100 pt-4 space-y-1.5">
         <div className="flex justify-between text-sm text-gray-500">
-          <span>${price.toFixed(2)} × {form.quantity}</span>
-          <span>${baseTotal.toFixed(2)}</span>
+          <span>{fmtAmt(price)} × {form.quantity}</span>
+          <span>{fmtAmt(baseTotal)}</span>
         </div>
         {appliedDiscount && (
           <div className="flex justify-between text-sm text-green-600">
             <span>Discount ({appliedDiscount.code})</span>
-            <span>−${discountAmount.toFixed(2)}</span>
+            <span>−{fmtAmt(discountAmount)}</span>
           </div>
         )}
         <div className="flex justify-between text-sm font-semibold text-gray-900">
           <span>Total</span>
-          <span>{isFree ? 'Free' : `$${total}`}</span>
+          <span>{isFree ? 'Free' : fmtAmt(finalTotal)}</span>
         </div>
       </div>
 

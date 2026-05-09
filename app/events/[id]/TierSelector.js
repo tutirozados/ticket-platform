@@ -47,8 +47,16 @@ function Countdown({ deadline }) {
   );
 }
 
+function fmtTierPrice(price, currency) {
+  const n = parseFloat(price);
+  if (n === 0) return 'Free';
+  if (currency === 'CRC') return `₡${Math.round(n).toLocaleString('es-CR')}`;
+  return `$${n.toFixed(2)}`;
+}
+
 export default function TierSelector({ event, tiers }) {
   const [selectedTier, setSelectedTier] = useState(null);
+  const currency = event.currency ?? 'USD';
 
   const allSoldOut = tiers.every((t) => t.quantity_remaining === 0);
 
@@ -110,15 +118,15 @@ export default function TierSelector({ event, tiers }) {
                   {isEarlyBird ? (
                     <>
                       <span className="text-xl font-bold text-gray-900">
-                        {parseFloat(tier.early_bird_price) === 0 ? 'Free' : `$${parseFloat(tier.early_bird_price).toFixed(2)}`}
+                        {fmtTierPrice(tier.early_bird_price, currency)}
                       </span>
                       <span className="block text-xs text-gray-400 line-through">
-                        ${parseFloat(tier.price).toFixed(2)}
+                        {fmtTierPrice(tier.price, currency)}
                       </span>
                     </>
                   ) : (
                     <span className="text-xl font-bold text-gray-900">
-                      {parseFloat(tier.price) === 0 ? 'Free' : `$${parseFloat(tier.price).toFixed(2)}`}
+                      {fmtTierPrice(tier.price, currency)}
                     </span>
                   )}
                 </div>
