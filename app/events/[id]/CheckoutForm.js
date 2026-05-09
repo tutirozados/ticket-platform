@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
-const SINPE_NUMBER = process.env.NEXT_PUBLIC_SINPE_NUMBER ?? '';
-const EXCHANGE_RATE = parseFloat(process.env.NEXT_PUBLIC_USD_TO_CRC_RATE ?? '515');
+const DEFAULT_EXCHANGE_RATE = parseFloat(process.env.NEXT_PUBLIC_USD_TO_CRC_RATE ?? '515');
 
 const emptyForm = {
   firstName: '',
@@ -20,7 +19,7 @@ function generateRef() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let code = '';
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return `FOMO-${code}`;
+  return code;
 }
 
 function formatPhone(n) {
@@ -42,6 +41,18 @@ export default function CheckoutForm({ event, selectedTier }) {
 
   const [sinpeRef] = useState(() => generateRef());
   const [qrDataUrl, setQrDataUrl] = useState(null);
+  const [sinpeNumber, setSinpeNumber] = useState('');
+  const [exchangeRate, setExchangeRate] = useState(DEFAULT_EXCHANGE_RATE);
+
+  useEffect(() => {
+    fetch('/api/sinpe-config')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.sinpeNumber) setSinpeNumber(d.sinpeNumber);
+        if (d.exchangeRate) setExchangeRate(d.exchangeRate);
+      })
+      .catch(() => {});
+  }, []);
 
   const price = selectedTier ? parseFloat(selectedTier.effective_price ?? selectedTier.price) : parseFloat(event.price);
   const maxQty = selectedTier ? selectedTier.quantity_remaining : event.tickets_remaining;
@@ -50,7 +61,7 @@ export default function CheckoutForm({ event, selectedTier }) {
   const finalTotal = Math.max(0, baseTotal - discountAmount);
   const total = finalTotal.toFixed(2);
   const isFree = finalTotal === 0;
-  const crcAmount = Math.round(finalTotal * EXCHANGE_RATE);
+  const crcAmount = Math.round(finalTotal * exchangeRate);
   const emailMismatch = form.confirmEmail && form.confirmEmail !== form.email;
 
   useEffect(() => {
@@ -72,7 +83,7 @@ export default function CheckoutForm({ event, selectedTier }) {
   useEffect(() => {
     if (step !== 'payment' || qrDataUrl) return;
     import('qrcode').then((QRCode) => {
-      const text = `SINPE Móvil\nNúmero: ${SINPE_NUMBER}\nMonto: ₡${crcAmount.toLocaleString('es-CR')}\nReferencia: ${sinpeRef}`;
+      const text = `SINPE Móvil\nNúmero: ${sinpeNumber}\nMonto: ₡${crcAmount.toLocaleString('es-CR')}\nReferencia: ${sinpeRef}`;
       QRCode.default.toDataURL(text, { width: 200, margin: 2 }).then(setQrDataUrl);
     });
   }, [step, qrDataUrl, crcAmount, sinpeRef]);
@@ -311,7 +322,7 @@ export default function CheckoutForm({ event, selectedTier }) {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-blue-700">Número</span>
-                  <span className="font-mono font-bold text-blue-900 text-lg">{formatPhone(SINPE_NUMBER)}</span>
+                  <span className="font-mono font-bold text-blue-900 text-lg">{formatPhone(sinpeNumber)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-blue-700">Monto exacto</span>
@@ -327,7 +338,7 @@ export default function CheckoutForm({ event, selectedTier }) {
             <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 space-y-1.5 text-sm text-amber-800">
               <p className="font-semibold text-amber-900 mb-1">Instrucciones</p>
               <p>1. Abre SINPE Móvil en tu teléfono</p>
-              <p>2. Transfiere <strong>₡{crcAmount.toLocaleString('es-CR')}</strong> al número <strong>{formatPhone(SINPE_NUMBER)}</strong></p>
+              <p>2. Transfiere <strong>₡{crcAmount.toLocaleString('es-CR')}</strong> al número <strong>{formatPhone(sinpeNumber)}</strong></p>
               <p>3. Escribe <strong>{sinpeRef}</strong> en el campo de descripción/referencia</p>
               <p>4. Haz clic en &quot;Ya pagué&quot;</p>
             </div>
