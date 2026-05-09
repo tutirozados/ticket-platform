@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import CreateEventForm from './CreateEventForm';
 import EditEventModal from './EditEventModal';
 import DiscountCodesTab from './DiscountCodesTab';
+import SinpeTab from './SinpeTab';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function AdminPage() {
   const [rejectingEvent, setRejectingEvent] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [approvingId, setApprovingId] = useState(null);
+  const [sinpePendingCount, setSinpePendingCount] = useState(0);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -49,6 +51,9 @@ export default function AdminPage() {
       promises.push(
         supabase.from('events').select('*').eq('status', 'pending').order('created_at', { ascending: true })
       );
+      promises.push(
+        supabase.from('orders').select('id', { count: 'exact', head: true }).eq('payment_method', 'sinpe').eq('payment_status', 'pending_sinpe')
+      );
     }
 
     const results = await Promise.all(promises);
@@ -59,6 +64,9 @@ export default function AdminPage() {
 
     if (isAdmin && results[2]) {
       setPendingEvents(results[2].data ?? []);
+    }
+    if (isAdmin && results[3]) {
+      setSinpePendingCount(results[3].count ?? 0);
     }
 
     setLoading(false);
@@ -104,7 +112,7 @@ export default function AdminPage() {
     fetchData();
   }
 
-  const tabs = isAdmin ? ['Overview', 'Approvals', 'Events', 'Orders', 'Discounts', 'New Event'] : ['Overview', 'Events', 'Orders', 'New Event'];
+  const tabs = isAdmin ? ['Overview', 'Approvals', 'SINPE', 'Events', 'Orders', 'Discounts', 'New Event'] : ['Overview', 'Events', 'Orders', 'New Event'];
   const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price ?? 0), 0);
   const ticketsSold = orders.reduce((sum, o) => sum + (o.quantity ?? 0), 0);
 
@@ -164,6 +172,11 @@ export default function AdminPage() {
                     {pendingEvents.length}
                   </span>
                 )}
+                {t === 'SINPE' && sinpePendingCount > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-blue-600 text-white rounded-full">
+                    {sinpePendingCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -196,6 +209,7 @@ export default function AdminPage() {
               />
             )}
             {tab === 'Orders' && <OrdersTab orders={orders} isAdmin={isAdmin} />}
+            {tab === 'SINPE' && isAdmin && <SinpeTab />}
             {tab === 'Discounts' && isAdmin && <DiscountCodesTab events={events} />}
             {tab === 'New Event' && (
               <div className="max-w-2xl">

@@ -1,0 +1,75 @@
+import { createHash } from 'crypto';
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
+
+function verifyToken(orderId, token) {
+  const expected = createHash('sha256')
+    .update(`${orderId}:${process.env.SINPE_ACTION_SECRET ?? 'fomo-sinpe'}`)
+    .digest('hex')
+    .slice(0, 24);
+  return token === expected;
+}
+
+async function confirmOrder(orderId) {
+  const { error } = await supabase
+    .from('orders')
+    .update({ payment_status: 'confirmed' })
+    .eq('id', orderId)
+    .eq('payment_status', 'pending_sinpe');
+
+  if (error) return { error: error.message };
+
+  try {
+    const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://fomocr.com';
+    await fetch(`${base}/api/send-ticket`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId }),
+    });
+  } catch (err) {
+    console.error('[confirm-sinpe] send-ticket failed:', err);
+  }
+
+  return { success: true };
+}
+
+// GET — called from email link with token
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const orderId = searchParams.get('orderId');
+  const token = searchParams.get('token');
+
+  if (!orderId || !token || !verifyToken(orderId, token)) {
+    return new Response('<html><body style="font-family:sans-serif;padding:60px;text-align:center"><h2>Enlace inválido o expirado.</h2></body></html>', {
+      status: 403,
+      headers: { 'Content-Type': 'text/html' },
+    });
+  }
+
+  const result = await confirmOrder(orderId);
+
+  if (result.error) {
+    return new Response(`<html><body style="font-family:sans-serif;padding:60px;text-align:center"><h2>Error: ${result.error}</h2></body></html>`, {
+      status: 500,
+      headers: { 'Content-Type': 'text/html' },
+    });
+  }
+
+  return new Response(`
+    <html><body style="font-family:sans-serif;text-align:center;padding:80px;color:#111827;">
+      <div style="font-size:56px;margin-bottom:16px">✓</div>
+      <h1 style="margin-bottom:8px;">Pago confirmado</h1>
+      <p style="color:#6b7280;">El ticket fue enviado al comprador por correo.</p>
+      <a href="/admin" style="display:inline-block;margin-top:24px;color:#1d4ed8;text-decoration:none;font-weight:600;">Ir al panel admin →</a>
+    </body></html>
+  `, { headers: { 'Content-Type': 'text/html' } });
+}
+
+// POST — called from admin panel
+export async function POST(request) {
+  const { orderId } = await request.json();
+  if (!orderId) return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
+  const result = await confirmOrder(orderId);
+  if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
+  return NextResponse.json({ success: true });
+}
