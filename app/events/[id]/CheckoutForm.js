@@ -277,9 +277,14 @@ export default function CheckoutForm({ event, selectedTier }) {
             style={{ layout: 'vertical', shape: 'rect', label: 'pay', height: 44 }}
           />
 
-          <p className="text-xs text-center text-gray-400">
-            Secure payment via PayPal. No PayPal account? Pay with card after clicking the button above.
-          </p>
+          <PayPalButtons
+            fundingSource={FUNDING.CARD}
+            createOrder={createPayPalOrder}
+            onApprove={onPayPalApprove}
+            onError={onPayPalError}
+            disabled={paymentProcessing}
+            style={{ layout: 'vertical', shape: 'rect', height: 44 }}
+          />
 
           <button
             type="button"
