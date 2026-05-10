@@ -6,11 +6,8 @@ export const runtime = 'nodejs';
 
 export async function GET(request) {
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = request.headers.get('authorization');
-    if (auth !== `Bearer ${secret}`) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  if (!secret || request.headers.get('x-cron-secret') !== secret) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
