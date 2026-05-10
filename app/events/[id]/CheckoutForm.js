@@ -56,6 +56,9 @@ export default function CheckoutForm({ event, selectedTier }) {
 
   const currency = event.currency ?? 'USD';
   const isCRC = currency === 'CRC';
+  const requireId = selectedTier
+    ? (selectedTier.require_id ?? event.require_id ?? true)
+    : (event.require_id ?? true);
   const fmtAmt = (n) => isCRC
     ? `₡${Math.round(n).toLocaleString('es-CR')}`
     : `$${parseFloat(n).toFixed(2)}`;
@@ -414,10 +417,12 @@ export default function CheckoutForm({ event, selectedTier }) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-gray-700">ID Number (Cédula)</label>
-        <input type="text" name="idNumber" value={form.idNumber} onChange={handleChange} placeholder="0000000000" required className="input" />
-      </div>
+      {requireId && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-gray-700">ID Number (Cédula)</label>
+          <input type="text" name="idNumber" value={form.idNumber} onChange={handleChange} placeholder="0000000000" required className="input" />
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-gray-700">Email</label>

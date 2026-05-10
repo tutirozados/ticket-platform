@@ -97,8 +97,10 @@ export default async function EventPage({ params }) {
                 <span className="text-sm">
                   {isSoldOut ? (
                     <span className="text-red-500 font-medium">Sold out</span>
-                  ) : (
+                  ) : event.show_tickets_remaining !== false ? (
                     <>{event.tickets_remaining} of {event.total_tickets} tickets remaining</>
+                  ) : (
+                    'Tickets available'
                   )}
                 </span>
               </div>

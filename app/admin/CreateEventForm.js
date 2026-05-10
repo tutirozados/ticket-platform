@@ -21,6 +21,8 @@ const initialForm = {
   price: '',
   total_tickets: '',
   currency: 'USD',
+  show_tickets_remaining: true,
+  require_id: true,
 };
 
 function newTier() {
@@ -37,6 +39,8 @@ function newTier() {
     early_bird_price: '',
     early_bird_quantity: '',
     early_bird_deadline: '',
+    show_tickets_remaining: null,
+    require_id: null,
   };
 }
 
@@ -128,6 +132,8 @@ export default function CreateEventForm({ onCreated, userId, userEmail }) {
         location: form.location,
         price: eventPrice,
         currency: form.currency,
+        show_tickets_remaining: form.show_tickets_remaining,
+        require_id: form.require_id,
         total_tickets: totalTickets,
         tickets_remaining: totalTickets,
         user_id: userId,
@@ -159,6 +165,8 @@ export default function CreateEventForm({ onCreated, userId, userEmail }) {
           early_bird_quantity: t.early_bird_enabled && t.early_bird_quantity ? parseInt(t.early_bird_quantity, 10) : null,
           early_bird_deadline: t.early_bird_enabled && t.early_bird_deadline ? new Date(t.early_bird_deadline).toISOString() : null,
           early_bird_sold: 0,
+          show_tickets_remaining: t.show_tickets_remaining,
+          require_id: t.require_id,
         }))
       );
       if (tierError) {
@@ -230,6 +238,24 @@ export default function CreateEventForm({ onCreated, userId, userEmail }) {
             ))}
           </div>
         </Field>
+
+        {/* Buyer settings */}
+        <div className="border border-gray-200 rounded-xl p-4 space-y-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Buyer Settings</p>
+          <ToggleField
+            label="Show remaining tickets"
+            description="Buyers can see how many tickets are left"
+            value={form.show_tickets_remaining}
+            onChange={(v) => setForm((prev) => ({ ...prev, show_tickets_remaining: v }))}
+          />
+          <div className="border-t border-gray-100" />
+          <ToggleField
+            label="Require buyer ID (cédula)"
+            description="Buyers must enter their national ID number to check out"
+            value={form.require_id}
+            onChange={(v) => setForm((prev) => ({ ...prev, require_id: v }))}
+          />
+        </div>
 
         {/* Price + Qty — hidden when tiers are used */}
         {!hasTiers && (
@@ -429,6 +455,37 @@ function TierCard({ tier, idx, total, currency = 'USD', onUpdate, onRemove, onAd
             </div>
           )}
         </div>
+
+        {/* Per-tier overrides */}
+        <div className="border-t border-gray-200 pt-3 space-y-2">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tier overrides</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Show tickets remaining</label>
+              <select
+                value={tier.show_tickets_remaining === null ? '' : String(tier.show_tickets_remaining)}
+                onChange={(e) => onUpdate('show_tickets_remaining', e.target.value === '' ? null : e.target.value === 'true')}
+                className="input text-sm"
+              >
+                <option value="">Event default</option>
+                <option value="true">Show</option>
+                <option value="false">Hide</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Require buyer ID</label>
+              <select
+                value={tier.require_id === null ? '' : String(tier.require_id)}
+                onChange={(e) => onUpdate('require_id', e.target.value === '' ? null : e.target.value === 'true')}
+                className="input text-sm"
+              >
+                <option value="">Event default</option>
+                <option value="true">Required</option>
+                <option value="false">Optional</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -441,6 +498,34 @@ function Field({ label, required, children }) {
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
+    </div>
+  );
+}
+
+function Toggle({ value, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+        value ? 'bg-gray-900' : 'bg-gray-200'
+      }`}
+    >
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+        value ? 'translate-x-6' : 'translate-x-1'
+      }`} />
+    </button>
+  );
+}
+
+function ToggleField({ label, description, value, onChange }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium text-gray-700">{label}</p>
+        {description && <p className="text-xs text-gray-400 mt-0.5">{description}</p>}
+      </div>
+      <Toggle value={value} onChange={onChange} />
     </div>
   );
 }

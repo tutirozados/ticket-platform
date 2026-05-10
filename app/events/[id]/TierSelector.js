@@ -159,9 +159,13 @@ export default function TierSelector({ event, tiers }) {
 
               <div className="flex items-center justify-between text-xs text-gray-400">
                 <span>
-                  {isSoldOut ? 'No tickets left' : isEarlyBird && ebRemaining != null
-                    ? `${ebRemaining} early bird left`
-                    : `${tier.quantity_remaining} left`}
+                  {(() => {
+                    if (isSoldOut) return 'No tickets left';
+                    const showCount = tier.show_tickets_remaining ?? event.show_tickets_remaining ?? true;
+                    if (!showCount) return 'Available';
+                    if (isEarlyBird && ebRemaining != null) return `${ebRemaining} early bird left`;
+                    return `${tier.quantity_remaining} left`;
+                  })()}
                 </span>
                 {!isSoldOut && (
                   <span className={`font-medium px-3 py-1 rounded-lg text-white text-xs ${c.btn} transition-colors`}>
