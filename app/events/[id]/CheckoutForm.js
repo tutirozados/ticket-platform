@@ -333,9 +333,14 @@ export default function CheckoutForm({ event, selectedTier }) {
                   <span className="text-sm text-blue-700">Número</span>
                   <span className="font-mono font-bold text-blue-900 text-lg">{formatPhone(sinpeNumber)}</span>
                 </div>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-start">
                   <span className="text-sm text-blue-700">Monto exacto</span>
-                  <span className="font-bold text-blue-900 text-lg">₡{crcAmount.toLocaleString('es-CR')}</span>
+                  <div className="text-right">
+                    <span className="font-bold text-blue-900 text-lg">₡{crcAmount.toLocaleString('es-CR')}</span>
+                    {!isCRC && (
+                      <p className="text-xs text-blue-500 mt-0.5">= ${finalTotal.toFixed(2)} USD</p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-blue-700">Referencia</span>
@@ -347,7 +352,7 @@ export default function CheckoutForm({ event, selectedTier }) {
             <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 space-y-1.5 text-sm text-amber-800">
               <p className="font-semibold text-amber-900 mb-1">Instrucciones</p>
               <p>1. Abre SINPE Móvil en tu teléfono</p>
-              <p>2. Transfiere <strong>₡{crcAmount.toLocaleString('es-CR')}</strong> al número <strong>{formatPhone(sinpeNumber)}</strong></p>
+              <p>2. Transfiere <strong>₡{crcAmount.toLocaleString('es-CR')}</strong>{!isCRC && ` (= $${finalTotal.toFixed(2)} USD)`} al número <strong>{formatPhone(sinpeNumber)}</strong></p>
               <p>3. Escribe <strong>{sinpeRef}</strong> en el campo de descripción/referencia</p>
               <p>4. Haz clic en &quot;Ya pagué&quot;</p>
             </div>

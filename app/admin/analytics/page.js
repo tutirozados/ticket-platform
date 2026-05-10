@@ -37,7 +37,7 @@ export default function AnalyticsPage() {
     const eventsQuery = supabase.from('events').select('*').order('date', { ascending: true });
     const ordersQuery = supabase
       .from('orders')
-      .select('*, events(title, user_id)')
+      .select('*, events(title, user_id, currency)')
       .order('created_at', { ascending: true });
 
     if (!isAdmin) {
@@ -61,11 +61,12 @@ export default function AnalyticsPage() {
     );
   }
 
-  const totalRevenue = orders.reduce((s, o) => s + parseFloat(o.total_price ?? 0), 0);
+  const usdRevenue = orders.filter((o) => (o.events?.currency ?? 'USD') !== 'CRC').reduce((s, o) => s + parseFloat(o.total_price ?? 0), 0);
+  const crcRevenue = orders.filter((o) => o.events?.currency === 'CRC').reduce((s, o) => s + parseFloat(o.total_price ?? 0), 0);
   const totalTickets = orders.reduce((s, o) => s + (o.quantity ?? 0), 0);
   const avgTickets = events.length > 0 ? (totalTickets / events.length).toFixed(1) : 0;
   const recentOrders = [...orders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 10);
-  const chartData = buildChartData(orders);
+  const chartData = buildChartData(orders.filter((o) => (o.events?.currency ?? 'USD') !== 'CRC'));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -86,11 +87,10 @@ export default function AnalyticsPage() {
 
         {/* Overview cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            label="Total Revenue"
-            value={`$${totalRevenue.toFixed(2)}`}
+          <RevenueStatCard
+            usdRevenue={usdRevenue}
+            crcRevenue={crcRevenue}
             sub={`from ${orders.length} orders`}
-            icon={<DollarIcon />}
           />
           <StatCard
             label="Tickets Sold"
@@ -114,9 +114,12 @@ export default function AnalyticsPage() {
 
         {/* Revenue chart */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-6">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-1">
             Revenue Over Time (last 30 days)
           </h2>
+          {crcRevenue > 0 && (
+            <p className="text-xs text-gray-400 mb-5">USD events only — CRC revenue shown separately above</p>
+          )}
           {chartData.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">No sales data yet.</p>
           ) : (
@@ -197,7 +200,9 @@ export default function AnalyticsPage() {
                         {sold} / {event.total_tickets}
                       </td>
                       <td className="px-6 py-4 font-semibold text-gray-900">
-                        {parseFloat(event.price) === 0 ? 'Free' : `$${revenue.toFixed(2)}`}
+                        {parseFloat(event.price) === 0 ? 'Free' : event.currency === 'CRC'
+                          ? `₡${Math.round(revenue).toLocaleString('es-CR')}`
+                          : `$${revenue.toFixed(2)}`}
                       </td>
                       <td className="px-6 py-4 hidden lg:table-cell">
                         <div className="flex items-center gap-2">
@@ -249,7 +254,9 @@ export default function AnalyticsPage() {
                     <td className="px-6 py-4 text-gray-600">{order.events?.title ?? '—'}</td>
                     <td className="px-6 py-4 text-gray-600">{order.quantity}</td>
                     <td className="px-6 py-4 font-semibold text-gray-900">
-                      ${parseFloat(order.total_price).toFixed(2)}
+                      {order.events?.currency === 'CRC'
+                        ? `₡${Math.round(parseFloat(order.total_price)).toLocaleString('es-CR')}`
+                        : `$${parseFloat(order.total_price).toFixed(2)}`}
                     </td>
                     <td className="px-6 py-4 text-gray-400 text-xs">
                       {new Date(order.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -291,7 +298,11 @@ export default function AnalyticsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-700 font-medium">{row.quantity}</td>
-                      <td className="px-6 py-4 font-semibold text-gray-900">${row.revenue.toFixed(2)}</td>
+                      <td className="px-6 py-4 font-semibold text-gray-900">
+                        {row.currency === 'CRC'
+                          ? `₡${Math.round(row.revenue).toLocaleString('es-CR')}`
+                          : `$${row.revenue.toFixed(2)}`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -331,13 +342,14 @@ function buildChartData(orders) {
 
 function buildTierData(orders, events) {
   const map = {};
-  const eventMap = Object.fromEntries(events.map((e) => [e.id, e.title]));
+  const eventMap = Object.fromEntries(events.map((e) => [e.id, { title: e.title, currency: e.currency ?? 'USD' }]));
 
   orders.forEach((o) => {
     if (!o.tier_name) return;
     const key = `${o.event_id}::${o.tier_name}`;
+    const ev = eventMap[o.event_id] ?? { title: '—', currency: 'USD' };
     if (!map[key]) {
-      map[key] = { key, eventTitle: eventMap[o.event_id] ?? '—', tierName: o.tier_name, quantity: 0, revenue: 0 };
+      map[key] = { key, eventTitle: ev.title, tierName: o.tier_name, currency: ev.currency, quantity: 0, revenue: 0 };
     }
     map[key].quantity += o.quantity ?? 0;
     map[key].revenue += parseFloat(o.total_price ?? 0);
@@ -357,6 +369,23 @@ function StatusBadge({ status }) {
     <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${styles[status] ?? 'bg-gray-50 text-gray-500 border-gray-200'}`}>
       {labels[status] ?? status}
     </span>
+  );
+}
+
+function RevenueStatCard({ usdRevenue, crcRevenue, sub }) {
+  const hasUsd = usdRevenue > 0;
+  const hasCrc = crcRevenue > 0;
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-gray-400"><DollarIcon /></span>
+      </div>
+      {!hasUsd && !hasCrc && <p className="text-2xl font-bold text-gray-900">$0.00</p>}
+      {hasUsd && <p className={`font-bold text-gray-900 ${hasCrc ? 'text-xl' : 'text-2xl'}`}>${usdRevenue.toFixed(2)} <span className="text-xs font-normal text-gray-400">USD</span></p>}
+      {hasCrc && <p className={`font-bold text-gray-900 ${hasUsd ? 'text-xl mt-0.5' : 'text-2xl'}`}>₡{Math.round(crcRevenue).toLocaleString('es-CR')} <span className="text-xs font-normal text-gray-400">CRC</span></p>}
+      <p className="text-sm font-medium text-gray-500 mt-0.5">Total Revenue</p>
+      <p className="text-xs text-gray-400 mt-1">{sub}</p>
+    </div>
   );
 }
 

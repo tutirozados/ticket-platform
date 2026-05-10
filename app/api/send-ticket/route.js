@@ -101,6 +101,15 @@ function formatTime(dateStr) {
   });
 }
 
+function fmtPdfPrice(amount, currency) {
+  const n = parseFloat(amount ?? 0);
+  if (currency === 'CRC') {
+    const formatted = Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `CRC ₡${formatted}`;
+  }
+  return `USD $${n.toFixed(2)}`;
+}
+
 function TicketPDF({ event, order, tickets }) {
   return (
     <Document>
@@ -109,6 +118,9 @@ function TicketPDF({ event, order, tickets }) {
         <Text style={styles.eventTitle}>{event.title}</Text>
         <Text style={styles.eventMeta}>{formatDate(event.date)} · {formatTime(event.date)}</Text>
         <Text style={styles.eventMeta}>{event.location}</Text>
+        {parseFloat(order.total_price ?? 0) > 0 && (
+          <Text style={styles.eventMeta}>Amount Paid: {fmtPdfPrice(order.total_price, event.currency)}</Text>
+        )}
 
         <View style={styles.divider} />
 

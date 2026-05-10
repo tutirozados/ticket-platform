@@ -38,7 +38,7 @@ export default function AdminPage() {
     setLoading(true);
 
     const eventsQuery = supabase.from('events').select('*').order('date', { ascending: true });
-    const ordersQuery = supabase.from('orders').select('*, events(title)').order('created_at', { ascending: false });
+    const ordersQuery = supabase.from('orders').select('*, events(title, currency)').order('created_at', { ascending: false });
 
     if (!isAdmin) {
       eventsQuery.eq('user_id', user.id);
@@ -113,7 +113,8 @@ export default function AdminPage() {
   }
 
   const tabs = isAdmin ? ['Overview', 'Approvals', 'SINPE', 'Events', 'Orders', 'Discounts', 'New Event'] : ['Overview', 'Events', 'Orders', 'New Event'];
-  const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price ?? 0), 0);
+  const usdRevenue = orders.filter((o) => (o.events?.currency ?? 'USD') !== 'CRC').reduce((s, o) => s + parseFloat(o.total_price ?? 0), 0);
+  const crcRevenue = orders.filter((o) => o.events?.currency === 'CRC').reduce((s, o) => s + parseFloat(o.total_price ?? 0), 0);
   const ticketsSold = orders.reduce((sum, o) => sum + (o.quantity ?? 0), 0);
 
   if (!user) return null;
@@ -189,7 +190,7 @@ export default function AdminPage() {
         ) : (
           <>
             {tab === 'Overview' && (
-              <OverviewTab events={events} orders={orders} totalRevenue={totalRevenue} ticketsSold={ticketsSold} isAdmin={isAdmin} />
+              <OverviewTab events={events} orders={orders} usdRevenue={usdRevenue} crcRevenue={crcRevenue} ticketsSold={ticketsSold} isAdmin={isAdmin} />
             )}
             {tab === 'Approvals' && isAdmin && (
               <ApprovalsTab
@@ -269,13 +270,28 @@ export default function AdminPage() {
   );
 }
 
+function fmtOrderPrice(amount, currency) {
+  const n = parseFloat(amount ?? 0);
+  return currency === 'CRC'
+    ? `₡${Math.round(n).toLocaleString('es-CR')}`
+    : `$${n.toFixed(2)}`;
+}
+
+function fmtEventPrice(price, currency) {
+  const n = parseFloat(price ?? 0);
+  if (n === 0) return 'Free';
+  return currency === 'CRC'
+    ? `₡${Math.round(n).toLocaleString('es-CR')}`
+    : `$${n.toFixed(2)}`;
+}
+
 /* ── Overview ── */
-function OverviewTab({ events, orders, totalRevenue, ticketsSold, isAdmin }) {
+function OverviewTab({ events, orders, usdRevenue, crcRevenue, ticketsSold, isAdmin }) {
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <StatCard label={isAdmin ? 'Total Orders' : 'Your Orders'} value={orders.length} icon="🧾" />
-        <StatCard label={isAdmin ? 'Total Revenue' : 'Your Revenue'} value={`$${totalRevenue.toFixed(2)}`} icon="💰" />
+        <RevenueStatCard label={isAdmin ? 'Total Revenue' : 'Your Revenue'} usdRevenue={usdRevenue} crcRevenue={crcRevenue} />
         <StatCard label="Tickets Sold" value={ticketsSold} icon="🎟️" />
       </div>
 
@@ -292,7 +308,7 @@ function OverviewTab({ events, orders, totalRevenue, ticketsSold, isAdmin }) {
                     <p className="text-sm font-medium text-gray-900">{o.buyer_name}</p>
                     <p className="text-xs text-gray-400">{o.events?.title}</p>
                   </div>
-                  <span className="text-sm font-semibold text-gray-900">${parseFloat(o.total_price).toFixed(2)}</span>
+                  <span className="text-sm font-semibold text-gray-900">{fmtOrderPrice(o.total_price, o.events?.currency)}</span>
                 </div>
               ))}
             </div>
@@ -334,6 +350,21 @@ function StatCard({ label, value, icon }) {
   );
 }
 
+function RevenueStatCard({ label, usdRevenue, crcRevenue }) {
+  const hasUsd = usdRevenue > 0;
+  const hasCrc = crcRevenue > 0;
+  const neither = !hasUsd && !hasCrc;
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+      <div className="text-2xl mb-3">💰</div>
+      {neither && <p className="text-3xl font-bold text-gray-900">$0.00</p>}
+      {hasUsd && <p className={`font-bold text-gray-900 ${hasCrc ? 'text-2xl' : 'text-3xl'}`}>${usdRevenue.toFixed(2)} <span className="text-sm font-normal text-gray-400">USD</span></p>}
+      {hasCrc && <p className={`font-bold text-gray-900 ${hasUsd ? 'text-2xl mt-1' : 'text-3xl'}`}>₡{Math.round(crcRevenue).toLocaleString('es-CR')} <span className="text-sm font-normal text-gray-400">CRC</span></p>}
+      <p className="text-sm text-gray-500 mt-1">{label}</p>
+    </div>
+  );
+}
+
 /* ── Approvals ── */
 function ApprovalsTab({ pendingEvents, approvingId, onApprove, onReject }) {
   if (pendingEvents.length === 0) {
@@ -362,7 +393,7 @@ function ApprovalsTab({ pendingEvents, approvingId, onApprove, onReject }) {
                   {new Date(event.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                 </span>
                 <span>{event.location}</span>
-                <span>{parseFloat(event.price) === 0 ? 'Free' : `$${parseFloat(event.price).toFixed(2)}`}</span>
+                <span>{fmtEventPrice(event.price, event.currency)}</span>
                 <span>{event.total_tickets} tickets</span>
                 {event.organizer_email && <span>by {event.organizer_email}</span>}
               </div>
@@ -435,7 +466,7 @@ function EventsTab({ events, isAdmin, deletingId, onEdit, onDelete }) {
                 {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </td>
               <td className="px-6 py-4 text-gray-600">
-                {parseFloat(event.price) === 0 ? 'Free' : `$${parseFloat(event.price).toFixed(2)}`}
+                {fmtEventPrice(event.price, event.currency)}
               </td>
               <td className="px-6 py-4">
                 <div className="flex items-center gap-2">
@@ -508,7 +539,7 @@ function OrdersTab({ orders, isAdmin }) {
               </td>
               <td className="px-6 py-4 text-gray-600">{order.events?.title ?? '—'}</td>
               <td className="px-6 py-4 text-gray-600">{order.quantity}</td>
-              <td className="px-6 py-4 font-semibold text-gray-900">${parseFloat(order.total_price).toFixed(2)}</td>
+              <td className="px-6 py-4 font-semibold text-gray-900">{fmtOrderPrice(order.total_price, order.events?.currency)}</td>
               <td className="px-6 py-4 text-gray-400 text-xs">
                 {new Date(order.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </td>
