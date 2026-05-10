@@ -116,7 +116,11 @@ function EventCard({ event }) {
 
         <div className="mt-auto flex items-center justify-between">
           <span className="text-2xl font-bold text-gray-900">
-            {event.price === 0 ? 'Free' : `$${parseFloat(event.price).toFixed(2)}`}
+            {event.price === 0
+              ? 'Free'
+              : event.currency === 'CRC'
+                ? `₡${Math.round(parseFloat(event.price)).toLocaleString('es-CR')}`
+                : `$${parseFloat(event.price).toFixed(2)}`}
           </span>
 
           <Link
