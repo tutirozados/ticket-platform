@@ -203,6 +203,7 @@ export default function AdminPage() {
             {tab === 'Events' && (
               <EventsTab
                 events={events}
+                orders={orders}
                 isAdmin={isAdmin}
                 deletingId={deletingId}
                 onEdit={setEditingEvent}
@@ -270,6 +271,82 @@ export default function AdminPage() {
   );
 }
 
+/* ── CSV Export ── */
+function csvEsc(val) {
+  if (val == null) return '""';
+  return `"${String(val).replace(/"/g, '""')}"`;
+}
+
+function triggerDownload(csvStr, filename) {
+  const blob = new Blob(['﻿' + csvStr], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function buildCSV(orders, ticketsByOrder) {
+  const COLS = [
+    'First Name', 'Last Name', 'Email', 'ID Number', 'Ticket Tier',
+    'Quantity', 'Amount Paid', 'Payment Method', 'Payment Status',
+    'Order Date', 'Ticket Code(s)', 'Is Used',
+  ];
+  const header = COLS.map(csvEsc).join(',');
+  const rows = orders.map((o) => {
+    const tickets = ticketsByOrder[o.id] ?? [];
+    const currency = o.events?.currency ?? 'USD';
+    const amt = currency === 'CRC'
+      ? `CRC ${Math.round(parseFloat(o.total_price ?? 0))}`
+      : `USD ${parseFloat(o.total_price ?? 0).toFixed(2)}`;
+    const codes = tickets.map((t) => t.ticket_code).join('; ');
+    const isUsed = tickets.length === 0 ? '' : tickets.some((t) => t.is_used) ? 'Yes' : 'No';
+    return [
+      o.first_name ?? '', o.last_name ?? '', o.buyer_email ?? '',
+      o.id_number ?? '', o.tier_name ?? '', o.quantity ?? 1,
+      amt, o.payment_method ?? '', o.payment_status ?? '',
+      new Date(o.created_at).toLocaleDateString('en-US'),
+      codes, isUsed,
+    ].map(csvEsc).join(',');
+  });
+  return [header, ...rows].join('\n');
+}
+
+function slugDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function exportEventAttendees(event, allOrders) {
+  const orders = allOrders.filter((o) => o.event_id === event.id);
+  if (orders.length === 0) { alert('No orders for this event.'); return; }
+  const orderIds = orders.map((o) => o.id);
+  const { data: tickets } = await supabase.from('tickets').select('*').in('order_id', orderIds);
+  const byOrder = {};
+  for (const t of tickets ?? []) {
+    if (!byOrder[t.order_id]) byOrder[t.order_id] = [];
+    byOrder[t.order_id].push(t);
+  }
+  const csv = buildCSV(orders, byOrder);
+  const safe = event.title.replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-');
+  triggerDownload(csv, `FOMO-${safe}-Attendees-${slugDate()}.csv`);
+}
+
+async function exportAllAttendees(allOrders) {
+  if (allOrders.length === 0) { alert('No orders to export.'); return; }
+  const orderIds = allOrders.map((o) => o.id);
+  const { data: tickets } = await supabase.from('tickets').select('*').in('order_id', orderIds);
+  const byOrder = {};
+  for (const t of tickets ?? []) {
+    if (!byOrder[t.order_id]) byOrder[t.order_id] = [];
+    byOrder[t.order_id].push(t);
+  }
+  const csv = buildCSV(allOrders, byOrder);
+  triggerDownload(csv, `FOMO-All-Attendees-${slugDate()}.csv`);
+}
+
 function fmtOrderPrice(amount, currency) {
   const n = parseFloat(amount ?? 0);
   return currency === 'CRC'
@@ -294,6 +371,19 @@ function OverviewTab({ events, orders, usdRevenue, crcRevenue, ticketsSold, isAd
         <RevenueStatCard label={isAdmin ? 'Total Revenue' : 'Your Revenue'} usdRevenue={usdRevenue} crcRevenue={crcRevenue} />
         <StatCard label="Tickets Sold" value={ticketsSold} icon="🎟️" />
       </div>
+      {isAdmin && orders.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => exportAllAttendees(orders)}
+            className="text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export All Attendees
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-gray-200 p-6">
@@ -437,7 +527,7 @@ function StatusBadge({ status }) {
 }
 
 /* ── Events ── */
-function EventsTab({ events, isAdmin, deletingId, onEdit, onDelete }) {
+function EventsTab({ events, orders, isAdmin, deletingId, onEdit, onDelete }) {
   if (events.length === 0) {
     return <p className="text-gray-400 text-sm py-12 text-center">No events yet.</p>;
   }
@@ -489,6 +579,13 @@ function EventsTab({ events, isAdmin, deletingId, onEdit, onDelete }) {
               </td>
               <td className="px-6 py-4">
                 <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => exportEventAttendees(event, orders)}
+                    className="text-xs font-medium text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+                    title="Download attendee list as CSV"
+                  >
+                    Export
+                  </button>
                   <button
                     onClick={() => onEdit(event)}
                     className="text-xs font-medium text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
