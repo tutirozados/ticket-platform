@@ -1142,6 +1142,101 @@
     }
     #auth-banner.visible { transform: translateY(0); }
 
+    /* ── Profile dropdown ───────────────────────────────── */
+    .profile-dropdown {
+      position: fixed;
+      top: 80px;
+      right: 24px;
+      z-index: 9500;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+      min-width: 260px;
+      font-family: 'Actay', sans-serif;
+      overflow: hidden;
+    }
+
+    .profile-dropdown-header {
+      padding: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: #f9fafb;
+    }
+
+    .profile-dropdown-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      background-size: cover;
+      background-position: center;
+      flex-shrink: 0;
+    }
+
+    .profile-dropdown-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .profile-dropdown-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .profile-dropdown-email {
+      font-size: 12px;
+      color: #6b7280;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .profile-dropdown-divider {
+      height: 1px;
+      background: #e5e7eb;
+    }
+
+    .profile-dropdown-link,
+    .profile-dropdown-button {
+      display: block;
+      width: 100%;
+      padding: 12px 16px;
+      font-family: 'Actay', sans-serif;
+      font-size: 14px;
+      color: #374151;
+      text-align: left;
+      border: none;
+      background: none;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      text-decoration: none;
+    }
+
+    .profile-dropdown-link:hover,
+    .profile-dropdown-button:hover {
+      background: #f3f4f6;
+    }
+
+    .profile-dropdown-button {
+      color: #dc2626;
+      font-weight: 500;
+    }
+
+    @media (max-width: 767px) {
+      .profile-dropdown {
+        right: 16px;
+        top: 70px;
+        min-width: 240px;
+      }
+    }
+
     /* ── Account panel ───────────────────────────────── */
     #account-panel {
       position: fixed;
@@ -2397,6 +2492,24 @@
     <button data-footer-link="contact"   data-en="contact"   data-es="contacto">contact</button>
     <button data-footer-link="about"     data-en="about"     data-es="nosotros">about</button>
   </div>
+</div>
+
+<!-- Profile dropdown (shown when logged in and avatar clicked) -->
+<div class="profile-dropdown" id="profile-dropdown" style="display:none;">
+  <div class="profile-dropdown-header">
+    <div class="profile-dropdown-avatar" id="profile-dropdown-avatar"></div>
+    <div class="profile-dropdown-info">
+      <div class="profile-dropdown-name" id="profile-dropdown-name">User Name</div>
+      <div class="profile-dropdown-email" id="profile-dropdown-email">user@example.com</div>
+    </div>
+  </div>
+  <div class="profile-dropdown-divider"></div>
+  <a href="/admin.html" class="profile-dropdown-link" id="profile-admin-link" style="display:none;">
+    <span data-en="Admin Panel" data-es="Panel Admin">Admin Panel</span>
+  </a>
+  <button class="profile-dropdown-button" id="profile-signout-btn">
+    <span data-en="Sign Out" data-es="Cerrar Sesión">Sign Out</span>
+  </button>
 </div>
 
 <div class="left-marquee" role="button" aria-label="Open menu">
@@ -4186,6 +4299,11 @@ document.getElementById('private-passcode-input').addEventListener('keydown', fu
       } else {
         closeModal();
         updateNavForUser(result.data.user);
+        // Show success banner
+        var name = result.data.user.user_metadata?.first_name || result.data.user.email;
+        showAuthBanner(currentLang === 'es'
+          ? '¡Bienvenido! Has iniciado sesión como ' + name + '.'
+          : 'Welcome! You\'re signed in as ' + name + '.');
       }
     });
 
@@ -4273,11 +4391,90 @@ document.getElementById('private-passcode-input').addEventListener('keydown', fu
   var _currentUser = null;
 
   function handleNavClick() {
-    if (_currentUser) { openAccountPanel(_currentUser); } else { _openAuthModal(); }
+    if (_currentUser) { toggleProfileDropdown(); } else { _openAuthModal(); }
   }
   function _openAuthModal() {
     var m = document.getElementById('create-account-modal');
     if (m) m.classList.add('is-open');
+  }
+
+  /* ── Profile dropdown ───────────────────────────────── */
+  function toggleProfileDropdown() {
+    var dropdown = document.getElementById('profile-dropdown');
+    if (!dropdown) return;
+
+    if (dropdown.style.display === 'none') {
+      // Show dropdown
+      updateProfileDropdown();
+      dropdown.style.display = 'block';
+
+      // Close on click outside
+      setTimeout(function() {
+        document.addEventListener('click', closeProfileDropdownOutside);
+      }, 0);
+    } else {
+      // Hide dropdown
+      dropdown.style.display = 'none';
+      document.removeEventListener('click', closeProfileDropdownOutside);
+    }
+  }
+
+  function closeProfileDropdownOutside(e) {
+    var dropdown = document.getElementById('profile-dropdown');
+    var mobileBtn = document.getElementById('mobile-create-account-btn');
+    var desktopBtn = document.getElementById('desktop-create-account-btn');
+
+    if (dropdown && !dropdown.contains(e.target) &&
+        e.target !== mobileBtn && !mobileBtn.contains(e.target) &&
+        e.target !== desktopBtn && !desktopBtn.contains(e.target)) {
+      dropdown.style.display = 'none';
+      document.removeEventListener('click', closeProfileDropdownOutside);
+    }
+  }
+
+  function updateProfileDropdown() {
+    if (!_currentUser) return;
+
+    var meta = _currentUser.user_metadata || {};
+    var name = meta.first_name
+      ? meta.first_name + (meta.last_name ? ' ' + meta.last_name : '')
+      : _currentUser.email;
+    var email = _currentUser.email;
+    var role = meta.role || 'buyer';
+    var avatarUrl = meta.avatar_url || '';
+
+    document.getElementById('profile-dropdown-name').textContent = name;
+    document.getElementById('profile-dropdown-email').textContent = email;
+
+    // Set avatar
+    var dropdownAvatar = document.getElementById('profile-dropdown-avatar');
+    if (avatarUrl) {
+      dropdownAvatar.style.backgroundImage = 'url(' + avatarUrl + ')';
+    } else {
+      dropdownAvatar.style.backgroundImage = 'none';
+      dropdownAvatar.style.background = '#e5e7eb';
+    }
+
+    // Show admin link for organizers only
+    var adminLink = document.getElementById('profile-admin-link');
+    if (role === 'organizer') {
+      adminLink.style.display = 'block';
+    } else {
+      adminLink.style.display = 'none';
+    }
+  }
+
+  // Sign out button
+  var profileSignoutBtn = document.getElementById('profile-signout-btn');
+  if (profileSignoutBtn) {
+    profileSignoutBtn.addEventListener('click', async function() {
+      await _supabase.auth.signOut();
+      document.getElementById('profile-dropdown').style.display = 'none';
+      resetNav();
+      showAuthBanner(currentLang === 'es'
+        ? 'Has cerrado sesión.'
+        : 'You\'ve been signed out.');
+    });
   }
 
   /* ── Account panel ──────────────────────────────── */
