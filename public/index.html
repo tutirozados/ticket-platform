@@ -4455,9 +4455,10 @@ document.getElementById('private-passcode-input').addEventListener('keydown', fu
       dropdownAvatar.style.background = '#e5e7eb';
     }
 
-    // Show admin link for organizers only
+    // Show admin link for organizers and super admins
     var adminLink = document.getElementById('profile-admin-link');
-    if (role === 'organizer') {
+    var isSuperAdmin = email === 'tutirozados@gmail.com' || email === 'fomocr@gmail.com';
+    if (role === 'organizer' || isSuperAdmin) {
       adminLink.style.display = 'block';
     } else {
       adminLink.style.display = 'none';
