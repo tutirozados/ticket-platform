@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FOMO Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f8f8; color: #111; min-height: 100vh; }
+
+    /* ── Login gate ── */
+    #login-gate { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+    .login-box { background:#fff; border:1px solid #e5e5e5; border-radius:16px; padding:40px; width:100%; max-width:360px; }
+    .login-brand { font-size:22px; font-weight:800; letter-spacing:-0.5px; margin-bottom:28px; }
+    .login-title { font-size:17px; font-weight:600; margin-bottom:4px; }
+    .login-sub { font-size:13px; color:#888; margin-bottom:24px; }
+    .login-error { background:#fff0f0; border:1px solid #fcc; color:#c00; font-size:13px; padding:10px 14px; border-radius:8px; margin-bottom:16px; display:none; }
+    .form-group { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+    .form-label { font-size:13px; font-weight:500; color:#444; }
+    .form-input { border:1px solid #ddd; border-radius:8px; padding:9px 12px; font-size:14px; outline:none; transition:border-color .15s; }
+    .form-input:focus { border-color:#111; }
+    .btn-primary { width:100%; background:#111; color:#fff; border:none; border-radius:8px; padding:11px; font-size:14px; font-weight:600; cursor:pointer; transition:background .15s; }
+    .btn-primary:hover { background:#333; }
+    .btn-primary:disabled { background:#aaa; cursor:not-allowed; }
+
+    /* ── App shell ── */
+    #app { display:none; }
+    .topbar { background:#fff; border-bottom:1px solid #e5e5e5; }
+    .topbar-inner { max-width:1100px; margin:0 auto; padding:0 24px; height:60px; display:flex; align-items:center; justify-content:space-between; }
+    .topbar-brand { font-size:18px; font-weight:800; letter-spacing:-0.5px; }
+    .topbar-badge { font-size:11px; background:#111; color:#fff; padding:2px 8px; border-radius:20px; font-weight:600; margin-left:8px; }
+    .topbar-right { display:flex; align-items:center; gap:16px; }
+    .topbar-email { font-size:13px; color:#999; }
+    .topbar-signout { font-size:13px; color:#666; background:none; border:none; cursor:pointer; }
+    .topbar-signout:hover { color:#111; }
+
+    /* ── Tabs ── */
+    .tab-bar { max-width:1100px; margin:0 auto; padding:0 24px; display:flex; gap:2px; border-bottom:1px solid #e5e5e5; background:#fff; }
+    .tab-btn { padding:14px 16px; font-size:13px; font-weight:500; color:#888; background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; position:relative; transition:color .15s; white-space:nowrap; }
+    .tab-btn:hover { color:#333; }
+    .tab-btn.active { color:#111; border-bottom-color:#111; }
+    .tab-badge { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; font-size:10px; font-weight:700; border-radius:50%; color:#fff; margin-left:5px; }
+    .tab-badge.orange { background:#f97316; }
+    .tab-badge.blue { background:#2563eb; }
+
+    /* ── Main content ── */
+    .main { max-width:1100px; margin:0 auto; padding:32px 24px; }
+
+    /* ── Stat cards ── */
+    .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:32px; }
+    .stat-card { background:#fff; border:1px solid #e5e5e5; border-radius:14px; padding:24px; }
+    .stat-icon { font-size:22px; margin-bottom:10px; }
+    .stat-value { font-size:28px; font-weight:700; }
+    .stat-label { font-size:13px; color:#888; margin-top:4px; }
+
+    /* ── Tables ── */
+    .table-wrap { background:#fff; border:1px solid #e5e5e5; border-radius:14px; overflow:hidden; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    thead tr { background:#fafafa; border-bottom:1px solid #e5e5e5; }
+    th { text-align:left; padding:11px 18px; font-size:11px; font-weight:600; color:#999; text-transform:uppercase; letter-spacing:.06em; }
+    tbody tr { border-bottom:1px solid #f0f0f0; transition:background .1s; }
+    tbody tr:last-child { border-bottom:none; }
+    tbody tr:hover { background:#fafafa; }
+    td { padding:14px 18px; vertical-align:middle; }
+    .td-name { font-weight:600; color:#111; }
+    .td-sub { font-size:12px; color:#aaa; margin-top:2px; }
+    .td-mono { font-family:monospace; font-size:13px; font-weight:700; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:6px; }
+
+    /* ── Buttons ── */
+    .btn { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all .15s; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .btn-green { background:#16a34a; color:#fff; border-color:#16a34a; }
+    .btn-green:hover:not(:disabled) { background:#15803d; }
+    .btn-red-outline { background:#fff; color:#dc2626; border-color:#fca5a5; }
+    .btn-red-outline:hover:not(:disabled) { background:#fff0f0; }
+    .btn-gray-outline { background:#fff; color:#444; border-color:#e5e5e5; }
+    .btn-gray-outline:hover:not(:disabled) { border-color:#ccc; color:#111; }
+    .btn-sm { padding:5px 10px; font-size:11px; }
+
+    /* ── Status badge ── */
+    .status-badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 10px; border-radius:20px; border:1px solid; }
+    .status-approved { background:#f0fdf4; color:#15803d; border-color:#bbf7d0; }
+    .status-pending  { background:#fff7ed; color:#c2410c; border-color:#fed7aa; }
+    .status-rejected { background:#fff0f0; color:#dc2626; border-color:#fca5a5; }
+
+    /* ── Approval cards ── */
+    .approval-card { background:#fff; border:1px solid #e5e5e5; border-radius:14px; padding:24px; margin-bottom:16px; }
+    .approval-title { font-size:16px; font-weight:700; margin-bottom:6px; }
+    .approval-desc { font-size:13px; color:#666; margin-bottom:12px; line-height:1.5; }
+    .approval-meta { display:flex; flex-wrap:wrap; gap:12px; font-size:12px; color:#999; margin-bottom:16px; }
+    .approval-actions { display:flex; gap:10px; }
+
+    /* ── Reject modal ── */
+    #reject-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9000; align-items:center; justify-content:center; padding:24px; }
+    #reject-modal.open { display:flex; }
+    .modal-box { background:#fff; border-radius:16px; padding:28px; width:100%; max-width:440px; }
+    .modal-title { font-size:16px; font-weight:700; margin-bottom:8px; }
+    .modal-sub { font-size:13px; color:#666; margin-bottom:16px; }
+    .modal-textarea { width:100%; border:1px solid #ddd; border-radius:8px; padding:10px 12px; font-size:13px; resize:vertical; min-height:80px; outline:none; font-family:inherit; }
+    .modal-textarea:focus { border-color:#111; }
+    .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+
+    /* ── Toast ── */
+    #toast { position:fixed; top:20px; right:20px; z-index:9999; padding:12px 18px; border-radius:10px; font-size:13px; font-weight:600; color:#fff; display:none; }
+    #toast.show { display:block; }
+    #toast.ok   { background:#16a34a; }
+    #toast.err  { background:#dc2626; }
+
+    /* ── Empty state ── */
+    .empty { text-align:center; padding:80px 24px; color:#bbb; font-size:14px; }
+
+    /* ── Section header ── */
+    .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+    .section-title { font-size:16px; font-weight:700; }
+    .section-sub { font-size:13px; color:#888; margin-top:2px; }
+
+    /* ── Overview mini tables ── */
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:24px; }
+    @media(max-width:640px) { .two-col { grid-template-columns:1fr; } }
+    .mini-card { background:#fff; border:1px solid #e5e5e5; border-radius:14px; padding:24px; }
+    .mini-card-title { font-size:11px; font-weight:700; color:#aaa; text-transform:uppercase; letter-spacing:.08em; margin-bottom:16px; }
+    .mini-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f5f5f5; }
+    .mini-row:last-child { border-bottom:none; }
+    .mini-name { font-size:13px; font-weight:600; }
+    .mini-detail { font-size:12px; color:#aaa; margin-top:2px; }
+    .mini-val { font-size:13px; font-weight:700; color:#111; }
+
+    /* ── Loading ── */
+    .loading-text { text-align:center; padding:80px; color:#bbb; font-size:13px; }
+
+    /* scrollable table on mobile */
+    .overflow-x { overflow-x:auto; }
+  </style>
+</head>
+<body>
+
+<!-- ── Login gate ── -->
+<div id="login-gate">
+  <div class="login-box">
+    <div class="login-brand">FOMO</div>
+    <div class="login-title">Admin access</div>
+    <div class="login-sub">Enter the admin password to continue.</div>
+    <div class="login-error" id="login-error"></div>
+    <div class="form-group" style="margin-top:16px;">
+      <label class="form-label">Password</label>
+      <input class="form-input" type="password" id="login-password" placeholder="••••••••" />
+    </div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Enter</button>
+  </div>
+</div>
+
+<!-- ── App ── -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div style="display:flex;align-items:center;">
+        <span class="topbar-brand">FOMO</span>
+        <span class="topbar-badge">Super Admin</span>
+      </div>
+      <div class="topbar-right">
+        <span class="topbar-email" id="admin-email-label"></span>
+        <button class="topbar-signout" onclick="doSignOut()">Sign out</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-bar" id="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('overview',this)">Overview</button>
+    <button class="tab-btn" onclick="switchTab('approvals',this)">
+      Approvals<span class="tab-badge orange" id="badge-approvals" style="display:none"></span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('sinpe',this)">
+      SINPE<span class="tab-badge blue" id="badge-sinpe" style="display:none"></span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('events',this)">Events</button>
+    <button class="tab-btn" onclick="switchTab('orders',this)">Orders</button>
+    <button class="tab-btn" onclick="switchTab('users',this)">Users</button>
+  </div>
+
+  <div class="main">
+    <div id="tab-overview"  class="tab-panel"></div>
+    <div id="tab-approvals" class="tab-panel" style="display:none"></div>
+    <div id="tab-sinpe"     class="tab-panel" style="display:none"></div>
+    <div id="tab-events"    class="tab-panel" style="display:none"></div>
+    <div id="tab-orders"    class="tab-panel" style="display:none"></div>
+    <div id="tab-users"     class="tab-panel" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ── Reject modal ── -->
+<div id="reject-modal">
+  <div class="modal-box">
+    <div class="modal-title">Reject event</div>
+    <div class="modal-sub" id="reject-modal-sub"></div>
+    <textarea class="modal-textarea" id="reject-reason" placeholder="Reason for rejection (optional)…"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-gray-outline" onclick="closeRejectModal()">Cancel</button>
+      <button class="btn btn-red-outline" id="reject-confirm-btn" onclick="confirmReject()">Reject Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast"></div>
+
+<script>
+  const ADMIN_PASSWORD = 'TBA010102Road2';
+
+  const _sb = supabase.createClient(
+    'https://ygfozxivdiywdepvzjse.supabase.co',
+    'sb_publishable_ro-G0zPIhVQ_5iEVJ_TdKg_T3Yir9Dn'
+  );
+
+  const EXCHANGE_RATE = 515;
+
+  /* ─── State ─── */
+  var _user        = null;
+  var _events      = [];
+  var _orders      = [];
+  var _pendingEvts = [];
+  var _users       = [];
+  var _sinpeOrders = [];
+  var _rejectTarget = null;
+  var _currentTab   = 'overview';
+
+  /* ─── Auth ─── */
+  function doLogin() {
+    var errEl = document.getElementById('login-error');
+    var pass  = document.getElementById('login-password').value;
+    errEl.style.display = 'none';
+    if (pass !== ADMIN_PASSWORD) {
+      errEl.textContent = 'Incorrect password.';
+      errEl.style.display = 'block';
+      return;
+    }
+    sessionStorage.setItem('fomo_admin', '1');
+    bootApp();
+  }
+
+  document.getElementById('login-password').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  function doSignOut() {
+    sessionStorage.removeItem('fomo_admin');
+    location.reload();
+  }
+
+  /* ─── Boot ─── */
+  async function bootApp() {
+    if (sessionStorage.getItem('fomo_admin') !== '1') return;
+    document.getElementById('login-gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('admin-email-label').textContent = 'FOMO Admin';
+    await loadAll();
+    renderCurrentTab();
+  }
+
+  async function loadAll() {
+    var [evRes, orRes, pendRes, usrRes, sinpeRes] = await Promise.all([
+      _sb.from('events').select('*').order('date', { ascending: true }),
+      _sb.from('orders').select('*, events(title, currency)').order('created_at', { ascending: false }),
+      _sb.from('events').select('*').eq('status', 'pending').order('created_at', { ascending: true }),
+      _sb.from('profiles').select('*').order('created_at', { ascending: false }),
+      _sb.from('orders').select('*, events(title, currency)')
+        .eq('payment_method', 'sinpe')
+        .eq('payment_status', 'pending_sinpe')
+        .order('created_at', { ascending: false })
+    ]);
+
+    _events      = evRes.data  || [];
+    _orders      = (orRes.data || []).filter(o => o.events !== null);
+    _pendingEvts = pendRes.data || [];
+    _users       = usrRes.data || [];
+    _sinpeOrders = (sinpeRes.data || []).filter(o => o.events !== null);
+
+    var bApprovals = document.getElementById('badge-approvals');
+    if (_pendingEvts.length > 0) { bApprovals.textContent = _pendingEvts.length; bApprovals.style.display = 'inline-flex'; }
+    else { bApprovals.style.display = 'none'; }
+
+    var bSinpe = document.getElementById('badge-sinpe');
+    if (_sinpeOrders.length > 0) { bSinpe.textContent = _sinpeOrders.length; bSinpe.style.display = 'inline-flex'; }
+    else { bSinpe.style.display = 'none'; }
+  }
+
+  /* ─── Tabs ─── */
+  function switchTab(name, btn) {
+    _currentTab = name;
+    document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).style.display = 'block';
+    btn.classList.add('active');
+    renderCurrentTab();
+  }
+
+  function renderCurrentTab() {
+    if (_currentTab === 'overview')   renderOverview();
+    if (_currentTab === 'approvals')  renderApprovals();
+    if (_currentTab === 'sinpe')      renderSinpe();
+    if (_currentTab === 'events')     renderEvents();
+    if (_currentTab === 'orders')     renderOrders();
+    if (_currentTab === 'users')      renderUsers();
+  }
+
+  /* ─── Formatters ─── */
+  function fmtCRC(n) { return '₡' + Math.round(n).toLocaleString('es-CR'); }
+  function fmtUSD(n) { return '$' + parseFloat(n).toFixed(2); }
+  function fmtPrice(amount, currency) {
+    var n = parseFloat(amount || 0);
+    if (n === 0) return 'Free';
+    return currency === 'CRC' ? fmtCRC(n) : fmtUSD(n);
+  }
+  function fmtOrder(amount, currency) {
+    var n = parseFloat(amount || 0);
+    return currency === 'CRC' ? fmtCRC(n) : fmtUSD(n);
+  }
+  function fmtDate(d) {
+    return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  }
+  function fmtDateTime(d) {
+    return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' +
+      new Date(d).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  }
+  function statusBadge(status) {
+    var cls = { approved:'status-approved', pending:'status-pending', rejected:'status-rejected' }[status] || 'status-pending';
+    var lbl = { approved:'Live', pending:'Pending', rejected:'Rejected' }[status] || status;
+    return '<span class="status-badge ' + cls + '">' + lbl + '</span>';
+  }
+
+  /* ─────────────────────────────────────────────────────
+     OVERVIEW
+  ───────────────────────────────────────────────────── */
+  function renderOverview() {
+    var panel = document.getElementById('tab-overview');
+    var totalOrders  = _orders.length;
+    var ticketsSold  = _orders.reduce((s,o) => s + (o.quantity || 0), 0);
+    var usdRev = _orders.filter(o => (o.events?.currency || 'USD') !== 'CRC').reduce((s,o) => s + parseFloat(o.total_price||0), 0);
+    var crcRev = _orders.filter(o => o.events?.currency === 'CRC').reduce((s,o) => s + parseFloat(o.total_price||0), 0);
+    var revenueHtml = usdRev === 0 && crcRev === 0
+      ? '<div class="stat-value">$0.00</div>'
+      : (usdRev > 0 ? '<div class="stat-value" style="font-size:22px">' + fmtUSD(usdRev) + ' <span style="font-size:13px;font-weight:400;color:#aaa">USD</span></div>' : '')
+        + (crcRev > 0 ? '<div class="stat-value" style="font-size:22px;margin-top:4px">' + fmtCRC(crcRev) + ' <span style="font-size:13px;font-weight:400;color:#aaa">CRC</span></div>' : '');
+
+    var recentOrders = _orders.slice(0, 5).map(o =>
+      '<div class="mini-row"><div><div class="mini-name">' + esc(o.buyer_name) + '</div><div class="mini-detail">' + esc(o.events?.title||'') + '</div></div><div class="mini-val">' + fmtOrder(o.total_price, o.events?.currency) + '</div></div>'
+    ).join('') || '<div style="color:#bbb;font-size:13px;">No orders yet.</div>';
+
+    var recentEvents = _events.filter(e=>e.status==='approved').slice(0,5).map(e =>
+      '<div class="mini-row"><div><div class="mini-name">' + esc(e.title) + '</div><div class="mini-detail">' + fmtDate(e.date) + '</div></div><div class="mini-val" style="font-size:12px;color:#888">' + (e.tickets_remaining||0) + '/' + (e.total_tickets||0) + ' left</div></div>'
+    ).join('') || '<div style="color:#bbb;font-size:13px;">No live events yet.</div>';
+
+    panel.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-value">${totalOrders}</div><div class="stat-label">Total Orders</div></div>
+        <div class="stat-card"><div class="stat-icon">💰</div>${revenueHtml}<div class="stat-label">Total Revenue</div></div>
+        <div class="stat-card"><div class="stat-icon">🎟️</div><div class="stat-value">${ticketsSold}</div><div class="stat-label">Tickets Sold</div></div>
+        <div class="stat-card"><div class="stat-icon">⏳</div><div class="stat-value">${_pendingEvts.length}</div><div class="stat-label">Pending Approvals</div></div>
+      </div>
+      <div class="two-col">
+        <div class="mini-card"><div class="mini-card-title">Recent Orders</div>${recentOrders}</div>
+        <div class="mini-card"><div class="mini-card-title">Live Events</div>${recentEvents}</div>
+      </div>`;
+  }
+
+  /* ─────────────────────────────────────────────────────
+     APPROVALS
+  ───────────────────────────────────────────────────── */
+  function renderApprovals() {
+    var panel = document.getElementById('tab-approvals');
+    if (_pendingEvts.length === 0) {
+      panel.innerHTML = '<div class="empty">✓ No pending events — you\'re all caught up.</div>';
+      return;
+    }
+    var cards = _pendingEvts.map(ev => `
+      <div class="approval-card">
+        <div class="approval-title">${esc(ev.title)}</div>
+        ${ev.description ? '<div class="approval-desc">' + esc(ev.description) + '</div>' : ''}
+        <div class="approval-meta">
+          <span>📅 ${fmtDateTime(ev.date)}</span>
+          <span>📍 ${esc(ev.location||'')}</span>
+          <span>💰 ${fmtPrice(ev.price, ev.currency)}</span>
+          <span>🎟️ ${ev.total_tickets} tickets</span>
+          ${ev.organizer_email ? '<span>👤 ' + esc(ev.organizer_email) + '</span>' : ''}
+        </div>
+        <div class="approval-actions">
+          <button class="btn btn-red-outline" onclick="openRejectModal('${ev.id}','${esc(ev.title)}')">Reject</button>
+          <button class="btn btn-green" onclick="approveEvent('${ev.id}',this)">Approve → go live</button>
+        </div>
+      </div>`).join('');
+    panel.innerHTML = `<div class="section-header"><div><div class="section-title">Pending Events</div><div class="section-sub">${_pendingEvts.length} event${_pendingEvts.length!==1?'s':''} awaiting review</div></div></div>` + cards;
+  }
+
+  async function approveEvent(id, btn) {
+    btn.disabled = true; btn.textContent = 'Approving…';
+    var { error } = await _sb.from('events').update({ status:'approved', is_active:true }).eq('id', id);
+    if (error) { showToast('Error: ' + error.message, false); btn.disabled=false; btn.textContent='Approve → go live'; return; }
+    showToast('Event approved and now live!');
+    await loadAll();
+    renderApprovals();
+    renderOverview();
+  }
+
+  function openRejectModal(id, title) {
+    _rejectTarget = id;
+    document.getElementById('reject-modal-sub').textContent = 'Rejecting "' + title + '". Optionally provide a reason.';
+    document.getElementById('reject-reason').value = '';
+    document.getElementById('reject-modal').classList.add('open');
+  }
+
+  function closeRejectModal() {
+    _rejectTarget = null;
+    document.getElementById('reject-modal').classList.remove('open');
+  }
+
+  async function confirmReject() {
+    if (!_rejectTarget) return;
+    var reason = document.getElementById('reject-reason').value.trim();
+    var btn = document.getElementById('reject-confirm-btn');
+    btn.disabled = true; btn.textContent = 'Rejecting…';
+    var { error } = await _sb.from('events').update({ status:'rejected', is_active:false, rejection_reason: reason || null }).eq('id', _rejectTarget);
+    btn.disabled = false; btn.textContent = 'Reject Event';
+    closeRejectModal();
+    if (error) { showToast('Error: ' + error.message, false); return; }
+    showToast('Event rejected.');
+    await loadAll();
+    renderApprovals();
+  }
+
+
+  /* ─────────────────────────────────────────────────────
+     SINPE PAYMENTS
+  ───────────────────────────────────────────────────── */
+  function renderSinpe() {
+    var panel = document.getElementById('tab-sinpe');
+    if (_sinpeOrders.length === 0) {
+      panel.innerHTML = '<div class="empty">✓ No pending SINPE payments — you\'re all caught up.</div>';
+      return;
+    }
+
+    var rows = _sinpeOrders.map(function(o) {
+      var currency = o.events?.currency || 'USD';
+      var crc = currency === 'CRC'
+        ? Math.round(parseFloat(o.total_price))
+        : Math.round(parseFloat(o.total_price) * EXCHANGE_RATE);
+
+      return '<tr>' +
+        '<td><div class="td-name">' + esc(o.buyer_name) + '</div><div class="td-sub">' + esc(o.buyer_email) + '</div></td>' +
+        '<td style="color:#666">' + esc(o.events?.title || '—') + '</td>' +
+        '<td style="color:#666">' + o.quantity + '</td>' +
+        '<td><div style="font-weight:700">₡' + crc.toLocaleString('es-CR') + '</div><div style="font-size:11px;color:#aaa">' + fmtOrder(o.total_price, currency) + '</div></td>' +
+        '<td><span class="td-mono">' + esc(o.sinpe_reference || '') + '</span></td>' +
+        '<td style="color:#aaa;font-size:12px">' + fmtDate(o.created_at) + '</td>' +
+        '<td><div style="display:flex;gap:6px;justify-content:flex-end">' +
+          '<button class="btn btn-green btn-sm" onclick="confirmSinpe(\'' + o.id + '\',this)">Confirm</button>' +
+          '<button class="btn btn-red-outline btn-sm" onclick="rejectSinpe(\'' + o.id + '\',this)">Reject</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+
+    panel.innerHTML =
+      '<div class="section-header"><div><div class="section-title">Pending SINPE Payments</div><div class="section-sub">' +
+      _sinpeOrders.length + ' payment' + (_sinpeOrders.length !== 1 ? 's' : '') + ' awaiting confirmation</div></div></div>' +
+      '<div class="table-wrap overflow-x"><table>' +
+        '<thead><tr><th>Buyer</th><th>Event</th><th>Qty</th><th>Amount</th><th>Reference</th><th>Submitted</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table></div>';
+  }
+
+  async function confirmSinpe(orderId, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Confirming...';
+
+    try {
+      var res = await fetch('/api/admin/confirm-sinpe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderId })
+      });
+
+      var data = await res.json();
+
+      if (data.success) {
+        showToast('Payment confirmed — ticket sent to buyer!');
+        await loadAll();
+        renderSinpe();
+      } else {
+        showToast('Error: ' + (data.error || 'Unknown error'), false);
+        btn.disabled = false;
+        btn.textContent = 'Confirm';
+      }
+    } catch(e) {
+      showToast('Error confirming payment', false);
+      btn.disabled = false;
+      btn.textContent = 'Confirm';
+    }
+  }
+
+  async function rejectSinpe(orderId, btn) {
+    if (!confirm('Reject this SINPE payment? Tickets will be returned to inventory and buyer will be notified.')) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Rejecting...';
+
+    try {
+      var res = await fetch('/api/admin/reject-sinpe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: orderId })
+      });
+
+      var data = await res.json();
+
+      if (data.success) {
+        showToast('Payment rejected — buyer notified.');
+        await loadAll();
+        renderSinpe();
+      } else {
+        showToast('Error: ' + (data.error || 'Unknown error'), false);
+        btn.disabled = false;
+        btn.textContent = 'Reject';
+      }
+    } catch(e) {
+      showToast('Error rejecting payment', false);
+      btn.disabled = false;
+      btn.textContent = 'Reject';
+    }
+  }
+
+
+  /* ─────────────────────────────────────────────────────
+     EVENTS
+  ───────────────────────────────────────────────────── */
+  function renderEvents() {
+    var panel = document.getElementById('tab-events');
+    if (_events.length === 0) { panel.innerHTML = '<div class="empty">No events yet.</div>'; return; }
+    var rows = _events.map(ev => {
+      var sold = (ev.total_tickets||0) - (ev.tickets_remaining||0);
+      var pct  = ev.total_tickets > 0 ? Math.round(sold/ev.total_tickets*100) : 0;
+      return `<tr>
+        <td><div class="td-name">${esc(ev.title)}</div><div class="td-sub">${esc(ev.location||'')}</div></td>
+        <td style="color:#666">${fmtDate(ev.date)}</td>
+        <td style="color:#666">${fmtPrice(ev.price, ev.currency)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:64px;height:5px;background:#f0f0f0;border-radius:3px;overflow:hidden"><div style="width:${pct}%;height:100%;background:#111;border-radius:3px"></div></div>
+            <span style="font-size:12px;color:#888">${ev.tickets_remaining}/${ev.total_tickets}</span>
+          </div>
+        </td>
+        <td>${statusBadge(ev.status||'pending')}</td>
+        <td>
+          <div style="display:flex;gap:6px;justify-content:flex-end">
+            ${ev.status==='pending'   ? '<button class="btn btn-green btn-sm" onclick="approveEventDirect(\''+ev.id+'\',this)">Approve</button>' : ''}
+            ${ev.status==='approved'  ? '<button class="btn btn-gray-outline btn-sm" onclick="unpublishEvent(\''+ev.id+'\',this)">Unpublish</button>' : ''}
+            ${ev.status==='rejected'||ev.status==='pending'||!ev.status ? '' : ''}
+            <button class="btn btn-red-outline btn-sm" onclick="deleteEvent('${ev.id}',this)">Delete</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+    panel.innerHTML = `
+      <div class="section-header"><div class="section-title">All Events (${_events.length})</div></div>
+      <div class="table-wrap overflow-x">
+        <table>
+          <thead><tr><th>Event</th><th>Date</th><th>Price</th><th>Tickets</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  async function approveEventDirect(id, btn) {
+    btn.disabled=true; btn.textContent='…';
+    await _sb.from('events').update({ status:'approved', is_active:true }).eq('id', id);
+    showToast('Event approved and live!');
+    await loadAll(); renderEvents();
+  }
+
+  async function unpublishEvent(id, btn) {
+    if (!confirm('Unpublish this event? It will be hidden from the public site.')) return;
+    btn.disabled=true; btn.textContent='…';
+    await _sb.from('events').update({ status:'pending', is_active:false }).eq('id', id);
+    showToast('Event unpublished.');
+    await loadAll(); renderEvents();
+  }
+
+  async function deleteEvent(id, btn) {
+    if (!confirm('Delete this event? This cannot be undone.')) return;
+    btn.disabled=true; btn.textContent='…';
+    await _sb.from('events').delete().eq('id', id);
+    showToast('Event deleted.');
+    await loadAll(); renderEvents();
+  }
+
+  /* ─────────────────────────────────────────────────────
+     ORDERS  (grouped by event)
+  ───────────────────────────────────────────────────── */
+  function renderOrders() {
+    var panel = document.getElementById('tab-orders');
+    if (_orders.length === 0) { panel.innerHTML = '<div class="empty">No orders yet.</div>'; return; }
+
+    // Group orders by event title
+    var groups = {};
+    _orders.forEach(function(o) {
+      var key = o.event_id || 'unknown';
+      if (!groups[key]) groups[key] = { title: o.events?.title || '—', currency: o.events?.currency || 'USD', orders: [] };
+      groups[key].orders.push(o);
+    });
+
+    // Set of emails still in profiles
+    var activeEmails = new Set(_users.map(function(u){ return u.email; }));
+
+    function buyerCell(o) {
+      if (activeEmails.has(o.buyer_email)) {
+        return '<div class="td-name">' + esc(o.buyer_name) + '</div><div class="td-sub">' + esc(o.buyer_email) + '</div>';
+      }
+      return '<div class="td-name" style="color:#bbb;font-style:italic;">Deleted user</div><div class="td-sub" style="color:#ccc;">(' + esc(o.buyer_email) + ')</div>';
+    }
+
+    function payBadge(o) {
+      if (o.payment_status === 'confirmed')
+        return '<span style="font-size:11px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;padding:2px 8px;border-radius:20px;font-weight:600">Paid</span>';
+      if (o.payment_status === 'pending_sinpe')
+        return '<span style="font-size:11px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;padding:2px 8px;border-radius:20px;font-weight:600">SINPE pending</span>';
+      return '<span style="font-size:11px;background:#fafafa;color:#888;border:1px solid #e5e5e5;padding:2px 8px;border-radius:20px;font-weight:600">' + esc(o.payment_status||'') + '</span>';
+    }
+
+    var html = '<div class="section-header"><div class="section-title">Orders by Event (' + _orders.length + ' total)</div></div>';
+
+    Object.values(groups).forEach(function(g) {
+      var totalQty = g.orders.reduce(function(s,o){ return s + (o.quantity||0); }, 0);
+      var totalRev = g.orders.filter(function(o){ return o.payment_status === 'confirmed'; })
+                             .reduce(function(s,o){ return s + parseFloat(o.total_price||0); }, 0);
+      var rows = g.orders.map(function(o) {
+        return '<tr>' +
+          '<td>' + buyerCell(o) + '</td>' +
+          '<td>' + o.quantity + '</td>' +
+          '<td style="font-weight:700">' + fmtOrder(o.total_price, g.currency) + '</td>' +
+          '<td><span style="font-size:12px;color:#666">' + esc(o.payment_method||'free') + '</span></td>' +
+          '<td>' + payBadge(o) + '</td>' +
+          '<td style="color:#aaa;font-size:12px">' + fmtDate(o.created_at) + '</td>' +
+        '</tr>';
+      }).join('');
+
+      html += '<div style="margin-bottom:28px;">' +
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">' +
+          '<div style="font-size:15px;font-weight:700;">' + esc(g.title) + '</div>' +
+          '<div style="font-size:12px;color:#888;">' + g.orders.length + ' order' + (g.orders.length!==1?'s':'') + ' · ' + totalQty + ' ticket' + (totalQty!==1?'s':'') + ' · ' + fmtOrder(totalRev, g.currency) + ' confirmed</div>' +
+        '</div>' +
+        '<div class="table-wrap overflow-x"><table>' +
+          '<thead><tr><th>Buyer</th><th>Qty</th><th>Total</th><th>Method</th><th>Status</th><th>Date</th></tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table></div></div>';
+    });
+
+    panel.innerHTML = html;
+  }
+
+  /* ─────────────────────────────────────────────────────
+     USERS  (split: buyers with orders / no orders)
+  ───────────────────────────────────────────────────── */
+  function renderUsers() {
+    var panel = document.getElementById('tab-users');
+    if (_users.length === 0) { panel.innerHTML = '<div class="empty">No users yet.</div>'; return; }
+
+    function userRow(u) {
+      var name = [u.first_name, u.last_name].filter(Boolean).join(' ') || '—';
+      var roleBadge = u.role === 'organizer'
+        ? '<span style="font-size:11px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;padding:2px 8px;border-radius:20px;font-weight:600">organizer</span>'
+        : '<span style="font-size:11px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 8px;border-radius:20px;font-weight:600">buyer</span>';
+      var userOrders = _orders.filter(function(o){ return o.buyer_email === u.email; });
+      var orderCount = userOrders.length;
+      var ticketCount = userOrders.reduce(function(s,o){ return s + (o.quantity||0); }, 0);
+      return '<tr>' +
+        '<td><div class="td-name">' + esc(name) + '</div><div class="td-sub">' + esc(u.email||'') + '</div></td>' +
+        '<td>' + roleBadge + '</td>' +
+        '<td style="color:#666;font-size:13px">' + (orderCount > 0 ? orderCount + ' order' + (orderCount!==1?'s':'') + ' · ' + ticketCount + ' ticket' + (ticketCount!==1?'s':'') : '—') + '</td>' +
+        '<td style="color:#aaa;font-size:12px">' + fmtDate(u.created_at) + '</td>' +
+        '<td><button class="btn btn-red-outline btn-sm" onclick="deleteUser(\'' + u.id + '\',\'' + esc(u.email) + '\',this)">Delete</button></td>' +
+      '</tr>';
+    }
+
+    function usersTable(list) {
+      if (list.length === 0) return '<div style="color:#bbb;font-size:13px;padding:16px 0;">None yet.</div>';
+      return '<div class="table-wrap overflow-x"><table>' +
+        '<thead><tr><th>Name / Email</th><th>Role</th><th>Activity</th><th>Joined</th><th></th></tr></thead>' +
+        '<tbody>' + list.map(userRow).join('') + '</tbody>' +
+        '</table></div>';
+    }
+
+    var withOrders    = _users.filter(function(u){ return _orders.some(function(o){ return o.buyer_email === u.email; }); });
+    var withoutOrders = _users.filter(function(u){ return !_orders.some(function(o){ return o.buyer_email === u.email; }); });
+
+    panel.innerHTML =
+      '<div class="section-header"><div><div class="section-title">All Users (' + _users.length + ')</div></div></div>' +
+
+      '<div style="font-size:13px;font-weight:700;color:#111;margin-bottom:10px;">With orders (' + withOrders.length + ')</div>' +
+      usersTable(withOrders) +
+
+      '<div style="font-size:13px;font-weight:700;color:#111;margin:24px 0 10px;">Registered — no orders yet (' + withoutOrders.length + ')</div>' +
+      usersTable(withoutOrders);
+  }
+
+  async function deleteUser(userId, email, btn) {
+    if (!confirm('Delete user ' + email + '? This cannot be undone.')) return;
+    btn.disabled = true; btn.textContent = '…';
+    var { error } = await _sb.rpc('delete_user_by_id', { user_id: userId });
+    if (error) {
+      showToast('Error: ' + error.message, false);
+      btn.disabled = false; btn.textContent = 'Delete';
+      return;
+    }
+    showToast('User deleted.');
+    await loadAll();
+    renderUsers();
+  }
+
+  /* ─── Utilities ─── */
+  function esc(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(msg, ok) {
+    ok = ok !== false;
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show ' + (ok ? 'ok' : 'err');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function() { t.className = ''; }, 3500);
+  }
+
+  /* ─── Check session on load ─── */
+  bootApp();
+</script>
+</body>
+</html>
