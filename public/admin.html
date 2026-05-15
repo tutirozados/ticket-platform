@@ -140,13 +140,12 @@
   <div class="login-box">
     <div class="login-brand">FOMO</div>
     <div class="login-title">Admin access</div>
-    <div class="login-sub">Enter the admin password to continue.</div>
-    <div class="login-error" id="login-error"></div>
-    <div class="form-group" style="margin-top:16px;">
-      <label class="form-label">Password</label>
-      <input class="form-input" type="password" id="login-password" placeholder="••••••••" />
+    <div class="login-sub">Please sign in to continue.</div>
+    <div class="login-error" id="login-error" style="display:none;"></div>
+    <div style="text-align:center;margin-top:24px;">
+      <p style="font-size:13px;color:#888;margin-bottom:16px;">Redirecting you to sign in...</p>
+      <button class="btn-primary" onclick="redirectToSignIn()">Sign In</button>
     </div>
-    <button class="btn-primary" id="login-btn" onclick="doLogin()">Enter</button>
   </div>
 </div>
 
@@ -205,14 +204,16 @@
 <div id="toast"></div>
 
 <script>
-  const ADMIN_PASSWORD = 'TBA010102Road2';
-
   const _sb = supabase.createClient(
     'https://ygfozxivdiywdepvzjse.supabase.co',
     'sb_publishable_ro-G0zPIhVQ_5iEVJ_TdKg_T3Yir9Dn'
   );
 
   const EXCHANGE_RATE = 515;
+
+  // Super Admin emails
+  const SUPER_ADMIN_FULL = 'tutirozados@gmail.com';     // Full power including SINPE approval
+  const SUPER_ADMIN_READONLY = 'fomocr@gmail.com';      // View only, no SINPE approval
 
   /* ─── State ─── */
   var _user        = null;
@@ -227,60 +228,83 @@
   var _currentTab   = 'overview';
 
   /* ─── Auth ─── */
-  function doLogin() {
-    var errEl = document.getElementById('login-error');
-    var pass  = document.getElementById('login-password').value;
-    errEl.style.display = 'none';
-    if (pass !== ADMIN_PASSWORD) {
-      errEl.textContent = 'Incorrect password.';
-      errEl.style.display = 'block';
-      return;
-    }
-    sessionStorage.setItem('fomo_admin', '1');
-    bootApp();
+  function redirectToSignIn() {
+    // Redirect to main site for login, then come back
+    window.location.href = '/?redirect=admin';
   }
 
-  document.getElementById('login-password').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') doLogin();
-  });
-
-  function doSignOut() {
-    sessionStorage.removeItem('fomo_admin');
+  async function doSignOut() {
+    await _sb.auth.signOut();
     location.reload();
+  }
+
+  function getUserRole(email) {
+    if (email === SUPER_ADMIN_FULL) return 'super_admin_full';
+    if (email === SUPER_ADMIN_READONLY) return 'super_admin_readonly';
+    return 'organizer';
   }
 
   /* ─── Boot ─── */
   async function bootApp() {
-    // Check if super admin password login
-    var isSuperAdmin = sessionStorage.getItem('fomo_admin') === '1';
-
-    // Check if organizer logged in via Supabase auth
+    // Check for Supabase auth session
     var sess = await _sb.auth.getSession();
-    var supabaseUser = sess.data?.session?.user;
+    var user = sess.data?.session?.user;
 
-    if (!isSuperAdmin && !supabaseUser) return;
+    if (!user) {
+      // Not logged in - show login gate
+      document.getElementById('login-gate').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+      // Auto redirect after 2 seconds
+      setTimeout(redirectToSignIn, 2000);
+      return;
+    }
 
+    // User is logged in - determine role
+    var email = user.email;
+    _userId = user.id;
+    _userRole = getUserRole(email);
+
+    // Check if user has admin access
+    var isAdmin = _userRole === 'super_admin_full' || _userRole === 'super_admin_readonly';
+    var isOrganizer = _userRole === 'organizer';
+
+    // Only allow super admins and organizers with events
+    if (!isAdmin && isOrganizer) {
+      // Check if organizer has events
+      var { data: userEvents } = await _sb.from('events').select('id').eq('user_id', _userId).limit(1);
+      if (!userEvents || userEvents.length === 0) {
+        document.getElementById('login-error').textContent = 'You don\'t have any events yet. Only event organizers can access the admin panel.';
+        document.getElementById('login-error').style.display = 'block';
+        return;
+      }
+    }
+
+    // Show app
     document.getElementById('login-gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
 
-    // Determine role
-    if (isSuperAdmin) {
-      _userRole = 'super_admin';
-      _userId = null;
-      document.getElementById('admin-email-label').textContent = 'Super Admin';
-      document.querySelector('.topbar-badge').textContent = 'Super Admin';
-    } else if (supabaseUser) {
-      _userRole = 'organizer';
-      _userId = supabaseUser.id;
-      document.getElementById('admin-email-label').textContent = supabaseUser.email;
-      document.querySelector('.topbar-badge').textContent = 'Organizer';
+    // Update UI based on role
+    var badge = document.querySelector('.topbar-badge');
+    if (_userRole === 'super_admin_full') {
+      badge.textContent = 'Owner';
+      badge.style.background = '#dc2626';
+    } else if (_userRole === 'super_admin_readonly') {
+      badge.textContent = 'Super Admin';
+      badge.style.background = '#2563eb';
+    } else {
+      badge.textContent = 'Organizer';
+      badge.style.background = '#16a34a';
     }
+
+    document.getElementById('admin-email-label').textContent = email;
 
     await loadAll();
     renderCurrentTab();
   }
 
   async function loadAll() {
+    var isSuperAdmin = _userRole === 'super_admin_full' || _userRole === 'super_admin_readonly';
+
     // Build queries based on role
     var evQuery = _sb.from('events').select('*');
     var orQuery = _sb.from('orders').select('*, events(title, currency, user_id)');
@@ -291,17 +315,16 @@
       .eq('payment_status', 'pending_sinpe');
 
     // Filter by organizer if not super admin
-    if (_userRole === 'organizer' && _userId) {
+    if (!isSuperAdmin && _userId) {
       evQuery = evQuery.eq('user_id', _userId);
       pendQuery = pendQuery.eq('user_id', _userId);
-      // For orders and SINPE, we'll filter after fetching (need to check event.user_id)
     }
 
     var [evRes, orRes, pendRes, usrRes, sinpeRes] = await Promise.all([
       evQuery.order('date', { ascending: true }),
       orQuery.order('created_at', { ascending: false }),
       pendQuery.order('created_at', { ascending: true }),
-      _userRole === 'super_admin' ? usrQuery.order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
+      isSuperAdmin ? usrQuery.order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
       sinpeQuery.order('created_at', { ascending: false })
     ]);
 
@@ -309,11 +332,11 @@
     _pendingEvts = pendRes.data || [];
     _users       = usrRes.data || [];
 
-    // Filter orders and SINPE by organizer's events
+    // Filter orders and SINPE by organizer's events (not for super admins)
     var allOrders = (orRes.data || []).filter(o => o.events !== null);
     var allSinpe = (sinpeRes.data || []).filter(o => o.events !== null);
 
-    if (_userRole === 'organizer' && _userId) {
+    if (!isSuperAdmin && _userId) {
       _orders = allOrders.filter(o => o.events.user_id === _userId);
       _sinpeOrders = allSinpe.filter(o => o.events.user_id === _userId);
     } else {
@@ -490,11 +513,20 @@
         ? Math.round(parseFloat(o.total_price))
         : Math.round(parseFloat(o.total_price) * EXCHANGE_RATE);
 
-      // Only show approve/reject buttons for organizers, not super admins
-      var actionButtons = _userRole === 'organizer'
-        ? '<button class="btn btn-green btn-sm" onclick="confirmSinpe(\'' + o.id + '\',this)">Confirm</button>' +
-          '<button class="btn btn-red-outline btn-sm" onclick="rejectSinpe(\'' + o.id + '\',this)">Reject</button>'
-        : '<span style="font-size:11px;color:#999;font-style:italic;">Organizer only</span>';
+      // Show approve/reject buttons based on role
+      var actionButtons;
+      if (_userRole === 'super_admin_full') {
+        // Full super admin can approve ANY SINPE
+        actionButtons = '<button class="btn btn-green btn-sm" onclick="confirmSinpe(\'' + o.id + '\',this)">Confirm</button>' +
+                       '<button class="btn btn-red-outline btn-sm" onclick="rejectSinpe(\'' + o.id + '\',this)">Reject</button>';
+      } else if (_userRole === 'super_admin_readonly') {
+        // Read-only super admin cannot approve
+        actionButtons = '<span style="font-size:11px;color:#999;font-style:italic;">View only</span>';
+      } else {
+        // Organizers can approve their own events
+        actionButtons = '<button class="btn btn-green btn-sm" onclick="confirmSinpe(\'' + o.id + '\',this)">Confirm</button>' +
+                       '<button class="btn btn-red-outline btn-sm" onclick="rejectSinpe(\'' + o.id + '\',this)">Reject</button>';
+      }
 
       return '<tr>' +
         '<td><div class="td-name">' + esc(o.buyer_name) + '</div><div class="td-sub">' + esc(o.buyer_email) + '</div></td>' +
@@ -521,14 +553,13 @@
     btn.textContent = 'Confirming...';
 
     try {
-      // Get auth token for organizers
+      // Get auth token
+      var sess = await _sb.auth.getSession();
+      var token = sess.data?.session?.access_token;
+
       var headers = { 'Content-Type': 'application/json' };
-      if (_userRole === 'organizer') {
-        var sess = await _sb.auth.getSession();
-        var token = sess.data?.session?.access_token;
-        if (token) {
-          headers['Authorization'] = 'Bearer ' + token;
-        }
+      if (token) {
+        headers['Authorization'] = 'Bearer ' + token;
       }
 
       var res = await fetch('/api/admin/confirm-sinpe', {
@@ -562,14 +593,13 @@
     btn.textContent = 'Rejecting...';
 
     try {
-      // Get auth token for organizers
+      // Get auth token
+      var sess = await _sb.auth.getSession();
+      var token = sess.data?.session?.access_token;
+
       var headers = { 'Content-Type': 'application/json' };
-      if (_userRole === 'organizer') {
-        var sess = await _sb.auth.getSession();
-        var token = sess.data?.session?.access_token;
-        if (token) {
-          headers['Authorization'] = 'Bearer ' + token;
-        }
+      if (token) {
+        headers['Authorization'] = 'Bearer ' + token;
       }
 
       var res = await fetch('/api/admin/reject-sinpe', {

@@ -83,20 +83,25 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Unauthorized - Invalid token' }, { status: 401 });
   }
 
-  // Fetch order with event details to check ownership
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .select('*, events(user_id)')
-    .eq('id', orderId)
-    .single();
+  const SUPER_ADMIN_FULL = 'tutirozados@gmail.com';
+  const isSuperAdminFull = user.email === SUPER_ADMIN_FULL;
 
-  if (orderError || !order) {
-    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-  }
+  // If not super admin full, check if user owns the event
+  if (!isSuperAdminFull) {
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('*, events(user_id)')
+      .eq('id', orderId)
+      .single();
 
-  // Check if user is the event organizer
-  if (order.events?.user_id !== user.id) {
-    return NextResponse.json({ error: 'Forbidden - You can only approve payments for your own events' }, { status: 403 });
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // Check if user is the event organizer
+    if (order.events?.user_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden - You can only approve payments for your own events' }, { status: 403 });
+    }
   }
 
   const result = await confirmOrder(orderId);
