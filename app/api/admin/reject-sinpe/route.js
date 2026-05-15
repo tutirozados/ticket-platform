@@ -121,6 +121,36 @@ export async function GET(request) {
 export async function POST(request) {
   const { orderId } = await request.json();
   if (!orderId) return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
+
+  // Get authenticated user
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader) {
+    return NextResponse.json({ error: 'Unauthorized - Authentication required' }, { status: 401 });
+  }
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized - Invalid token' }, { status: 401 });
+  }
+
+  // Fetch order with event details to check ownership
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('*, events(user_id)')
+    .eq('id', orderId)
+    .single();
+
+  if (orderError || !order) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+
+  // Check if user is the event organizer
+  if (order.events?.user_id !== user.id) {
+    return NextResponse.json({ error: 'Forbidden - You can only reject payments for your own events' }, { status: 403 });
+  }
+
   const result = await rejectOrder(orderId);
   if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
   return NextResponse.json({ success: true });

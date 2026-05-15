@@ -216,6 +216,8 @@
 
   /* ─── State ─── */
   var _user        = null;
+  var _userRole    = null; // 'super_admin' or 'organizer'
+  var _userId      = null;
   var _events      = [];
   var _orders      = [];
   var _pendingEvts = [];
@@ -249,31 +251,75 @@
 
   /* ─── Boot ─── */
   async function bootApp() {
-    if (sessionStorage.getItem('fomo_admin') !== '1') return;
+    // Check if super admin password login
+    var isSuperAdmin = sessionStorage.getItem('fomo_admin') === '1';
+
+    // Check if organizer logged in via Supabase auth
+    var sess = await _sb.auth.getSession();
+    var supabaseUser = sess.data?.session?.user;
+
+    if (!isSuperAdmin && !supabaseUser) return;
+
     document.getElementById('login-gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
-    document.getElementById('admin-email-label').textContent = 'FOMO Admin';
+
+    // Determine role
+    if (isSuperAdmin) {
+      _userRole = 'super_admin';
+      _userId = null;
+      document.getElementById('admin-email-label').textContent = 'Super Admin';
+      document.querySelector('.topbar-badge').textContent = 'Super Admin';
+    } else if (supabaseUser) {
+      _userRole = 'organizer';
+      _userId = supabaseUser.id;
+      document.getElementById('admin-email-label').textContent = supabaseUser.email;
+      document.querySelector('.topbar-badge').textContent = 'Organizer';
+    }
+
     await loadAll();
     renderCurrentTab();
   }
 
   async function loadAll() {
+    // Build queries based on role
+    var evQuery = _sb.from('events').select('*');
+    var orQuery = _sb.from('orders').select('*, events(title, currency, user_id)');
+    var pendQuery = _sb.from('events').select('*').eq('status', 'pending');
+    var usrQuery = _sb.from('profiles').select('*');
+    var sinpeQuery = _sb.from('orders').select('*, events(title, currency, user_id)')
+      .eq('payment_method', 'sinpe')
+      .eq('payment_status', 'pending_sinpe');
+
+    // Filter by organizer if not super admin
+    if (_userRole === 'organizer' && _userId) {
+      evQuery = evQuery.eq('user_id', _userId);
+      pendQuery = pendQuery.eq('user_id', _userId);
+      // For orders and SINPE, we'll filter after fetching (need to check event.user_id)
+    }
+
     var [evRes, orRes, pendRes, usrRes, sinpeRes] = await Promise.all([
-      _sb.from('events').select('*').order('date', { ascending: true }),
-      _sb.from('orders').select('*, events(title, currency)').order('created_at', { ascending: false }),
-      _sb.from('events').select('*').eq('status', 'pending').order('created_at', { ascending: true }),
-      _sb.from('profiles').select('*').order('created_at', { ascending: false }),
-      _sb.from('orders').select('*, events(title, currency)')
-        .eq('payment_method', 'sinpe')
-        .eq('payment_status', 'pending_sinpe')
-        .order('created_at', { ascending: false })
+      evQuery.order('date', { ascending: true }),
+      orQuery.order('created_at', { ascending: false }),
+      pendQuery.order('created_at', { ascending: true }),
+      _userRole === 'super_admin' ? usrQuery.order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
+      sinpeQuery.order('created_at', { ascending: false })
     ]);
 
     _events      = evRes.data  || [];
-    _orders      = (orRes.data || []).filter(o => o.events !== null);
     _pendingEvts = pendRes.data || [];
     _users       = usrRes.data || [];
-    _sinpeOrders = (sinpeRes.data || []).filter(o => o.events !== null);
+
+    // Filter orders and SINPE by organizer's events
+    var allOrders = (orRes.data || []).filter(o => o.events !== null);
+    var allSinpe = (sinpeRes.data || []).filter(o => o.events !== null);
+
+    if (_userRole === 'organizer' && _userId) {
+      _orders = allOrders.filter(o => o.events.user_id === _userId);
+      _sinpeOrders = allSinpe.filter(o => o.events.user_id === _userId);
+    } else {
+      _orders = allOrders;
+      _sinpeOrders = allSinpe;
+    }
 
     var bApprovals = document.getElementById('badge-approvals');
     if (_pendingEvts.length > 0) { bApprovals.textContent = _pendingEvts.length; bApprovals.style.display = 'inline-flex'; }
@@ -444,6 +490,12 @@
         ? Math.round(parseFloat(o.total_price))
         : Math.round(parseFloat(o.total_price) * EXCHANGE_RATE);
 
+      // Only show approve/reject buttons for organizers, not super admins
+      var actionButtons = _userRole === 'organizer'
+        ? '<button class="btn btn-green btn-sm" onclick="confirmSinpe(\'' + o.id + '\',this)">Confirm</button>' +
+          '<button class="btn btn-red-outline btn-sm" onclick="rejectSinpe(\'' + o.id + '\',this)">Reject</button>'
+        : '<span style="font-size:11px;color:#999;font-style:italic;">Organizer only</span>';
+
       return '<tr>' +
         '<td><div class="td-name">' + esc(o.buyer_name) + '</div><div class="td-sub">' + esc(o.buyer_email) + '</div></td>' +
         '<td style="color:#666">' + esc(o.events?.title || '—') + '</td>' +
@@ -451,10 +503,7 @@
         '<td><div style="font-weight:700">₡' + crc.toLocaleString('es-CR') + '</div><div style="font-size:11px;color:#aaa">' + fmtOrder(o.total_price, currency) + '</div></td>' +
         '<td><span class="td-mono">' + esc(o.sinpe_reference || '') + '</span></td>' +
         '<td style="color:#aaa;font-size:12px">' + fmtDate(o.created_at) + '</td>' +
-        '<td><div style="display:flex;gap:6px;justify-content:flex-end">' +
-          '<button class="btn btn-green btn-sm" onclick="confirmSinpe(\'' + o.id + '\',this)">Confirm</button>' +
-          '<button class="btn btn-red-outline btn-sm" onclick="rejectSinpe(\'' + o.id + '\',this)">Reject</button>' +
-        '</div></td>' +
+        '<td><div style="display:flex;gap:6px;justify-content:flex-end">' + actionButtons + '</div></td>' +
       '</tr>';
     }).join('');
 
@@ -472,9 +521,19 @@
     btn.textContent = 'Confirming...';
 
     try {
+      // Get auth token for organizers
+      var headers = { 'Content-Type': 'application/json' };
+      if (_userRole === 'organizer') {
+        var sess = await _sb.auth.getSession();
+        var token = sess.data?.session?.access_token;
+        if (token) {
+          headers['Authorization'] = 'Bearer ' + token;
+        }
+      }
+
       var res = await fetch('/api/admin/confirm-sinpe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({ orderId: orderId })
       });
 
@@ -503,9 +562,19 @@
     btn.textContent = 'Rejecting...';
 
     try {
+      // Get auth token for organizers
+      var headers = { 'Content-Type': 'application/json' };
+      if (_userRole === 'organizer') {
+        var sess = await _sb.auth.getSession();
+        var token = sess.data?.session?.access_token;
+        if (token) {
+          headers['Authorization'] = 'Bearer ' + token;
+        }
+      }
+
       var res = await fetch('/api/admin/reject-sinpe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({ orderId: orderId })
       });
 
